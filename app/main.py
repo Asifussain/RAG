@@ -1,194 +1,220 @@
 """
-FastAPI Backend — Phase 4
-=========================
-Endpoints:
-  GET  /health  — Health check (index size, model status)
-  POST /upload  — Upload & process a PDF
-  POST /query   — Natural-language search over indexed chunks
-  GET  /pdfs    — List all indexed PDFs and total chunk count
+main.py — FastAPI application entry point.
+
+Routes:
+  POST /upload     → Upload a PDF, get back an index_id
+  POST /query      → Query an indexed PDF
+  GET  /health     → Health check + active index count
+  GET  /indexes    → List all persisted index IDs
+
+Run with:
+  uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
 
-import logging
-import time
+import shutil
 from pathlib import Path
+from typing import List
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB, UPLOADS_DIR
-from app.embedder import Embedder
-from app.models import (
-    HealthResponse,
-    PDFListResponse,
-    QueryRequest,
-    QueryResponse,
-    SearchResult,
-    UploadResponse,
-)
-from app.pdf_processor import process_pdf
-from app.vector_store import VectorStore
+from app.config import UPLOAD_DIR, MAX_FILE_SIZE_MB, ALLOWED_MIME_TYPE, EMBEDDING_MODEL, INDEX_DIR
+from app.models import QueryRequest, QueryResponse, UploadResponse, HealthResponse, ChunkResult, CollectionResponse, FileSummary
+from app.pipeline import rag_pipeline
 
-# ── Logging ───────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-)
-logger = logging.getLogger(__name__)
 
-# ── App & Singletons ─────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# APP SETUP
+# ─────────────────────────────────────────────
+
 app = FastAPI(
-    title="Real Estate Document Intelligence",
+    title="Real Estate Document Intelligence API",
     description="Upload real estate PDFs and query them using natural language.",
     version="1.0.0",
 )
 
-# Loaded once at startup — kept in memory for fast inference
-embedder: Embedder = None  # type: ignore[assignment]
-vector_store: VectorStore = None  # type: ignore[assignment]
+# Allow local frontend / Postman testing — tighten origins in production
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-@app.on_event("startup")
-async def startup():
-    """Load the embedding model and FAISS index once at server start."""
-    global embedder, vector_store
+# ─────────────────────────────────────────────
+# ROUTES
+# ─────────────────────────────────────────────
 
-    logger.info("Starting up — loading model and index ...")
-    embedder = Embedder()
-
-    vector_store = VectorStore()
-    vector_store.load()  # loads from disk if a saved index exists, else empty
-
-    logger.info("Startup complete — index has %d vectors", vector_store.size)
-
-
-# ── 1. Health Check ──────────────────────────────────────────────────────
-
-@app.get("/health", response_model=HealthResponse)
-async def health():
+@app.get("/health", response_model=HealthResponse, tags=["System"])
+def health_check():
+    """Quick liveness check. Also useful to confirm model is loaded."""
     return HealthResponse(
-        status="healthy",
-        index_size=vector_store.size,
-        model_loaded=embedder is not None,
+        status="ok",
+        model=EMBEDDING_MODEL,
+        active_indexes=rag_pipeline.active_index_count(),
     )
 
 
-# ── 2. PDF Upload ────────────────────────────────────────────────────────
+@app.get("/indexes", tags=["System"])
+def list_indexes():
+    """
+    Returns all index IDs that have been persisted to disk.
+    Useful for reconnecting to previously uploaded PDFs after a restart.
+    """
+    saved = [p.name for p in INDEX_DIR.iterdir() if p.is_dir()]
+    return {"indexes": saved, "count": len(saved)}
 
-@app.post("/upload", response_model=UploadResponse)
+
+@app.post("/upload", response_model=UploadResponse, status_code=status.HTTP_201_CREATED, tags=["Documents"])
 async def upload_pdf(file: UploadFile = File(...)):
-    start = time.perf_counter()
+    """
+    Upload a PDF file. The server will:
+    1. Validate the file (type + size)
+    2. Extract and clean text page by page
+    3. Chunk and embed the content
+    4. Build and save a FAISS index
 
-    # --- Validate file extension ---
-    filename = file.filename or "unknown.pdf"
-    suffix = Path(filename).suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
+    Returns an `index_id` — pass this in all subsequent /query calls.
+
+    Latency: typically 2–15s depending on PDF size and CPU.
+    Large PDFs (>50 pages) may take longer — consider chunking uploads client-side.
+    """
+    # ── Validation ────────────────────────────────────────────────────────
+    if file.content_type != ALLOWED_MIME_TYPE:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type '{suffix}'. Only PDF files are accepted.",
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Only PDF files are accepted. Got: {file.content_type}",
         )
 
-    # --- Validate file size ---
     contents = await file.read()
     size_mb = len(contents) / (1024 * 1024)
-    if size_mb > MAX_UPLOAD_SIZE_MB:
+    if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(
-            status_code=400,
-            detail=f"File too large ({size_mb:.1f} MB). Max is {MAX_UPLOAD_SIZE_MB} MB.",
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large: {size_mb:.1f}MB. Maximum is {MAX_FILE_SIZE_MB}MB.",
         )
 
-    # --- Save to uploads/ ---
-    save_path = UPLOADS_DIR / filename
+    # ── Save to disk temporarily ───────────────────────────────────────────
+    save_path = UPLOAD_DIR / file.filename
     with open(save_path, "wb") as f:
         f.write(contents)
 
-    # --- Process: extract text → chunk → embed → index ---
+    # ── Index ──────────────────────────────────────────────────────────────
     try:
-        chunks = process_pdf(save_path)
-
-        if not chunks:
-            raise HTTPException(
-                status_code=422,
-                detail="No text could be extracted from this PDF.",
-            )
-
-        embeddings = embedder.embed_chunks(chunks, show_progress=False)
-        vector_store.add(embeddings, chunks)
-        vector_store.save()
-
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info("Uploaded '%s': %d chunks in %.0f ms", filename, len(chunks), elapsed_ms)
+        result = rag_pipeline.index_pdf(str(save_path))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Indexing failed: {e}")
+    finally:
+        # Clean up the raw upload — we only need the FAISS index going forward
+        save_path.unlink(missing_ok=True)
 
     return UploadResponse(
-        message="PDF processed successfully",
-        pdf_name=filename,
-        chunks_created=len(chunks),
-        processing_time_ms=round(elapsed_ms, 1),
+        index_id=result["index_id"],
+        filename=result["filename"],
+        total_pages=result["total_pages"],
+        total_chunks=result["total_chunks"],
+        message="PDF indexed successfully. Use the index_id to query.",
     )
 
 
-# ── 3. Query Search ─────────────────────────────────────────────────────
+@app.post("/query", response_model=QueryResponse, tags=["Search"])
+def query_index(request: QueryRequest):
+    """
+    Query a previously indexed PDF using natural language.
 
-@app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
-    if vector_store.size == 0:
+    - `index_id`: returned from /upload
+    - `question`: plain English question (e.g. "What are the nearby landmarks?")
+    - `top_k`: how many results to return (default 3, max 10)
+
+    Results include source metadata (filename, page number) for each chunk.
+    Score is L2 distance — lower = more similar.
+    """
+    if not rag_pipeline.has_index(request.index_id):
         raise HTTPException(
-            status_code=400,
-            detail="No documents indexed yet. Upload a PDF first.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Index '{request.index_id}' not found. Please upload the PDF again.",
         )
 
-    start = time.perf_counter()
-
-    query_embedding = embedder.embed_query(request.query)
-    raw_results = vector_store.search(query_embedding, top_k=request.top_k)
-
-    results = [
-        SearchResult(
-            text=r["chunk_text"],
-            pdf_name=r["pdf_name"],
-            page_number=r["page_number"],
-            similarity_score=r["similarity_score"],
+    try:
+        results, latency_ms = rag_pipeline.query(
+            index_id=request.index_id,
+            question=request.question,
+            top_k=request.top_k or 3,
         )
-        for r in raw_results
-    ]
-
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    logger.info(
-        "Query '%s' → %d results in %.0f ms",
-        request.query,
-        len(results),
-        elapsed_ms,
-    )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return QueryResponse(
-        query=request.query,
-        results=results,
-        latency_ms=round(elapsed_ms, 1),
-        total_results=len(results),
+        question=request.question,
+        results=[
+            ChunkResult(
+                content=r.content,
+                filename=r.filename,
+                page_number=r.page_number,
+                total_pages=r.total_pages,
+                chunk_index=r.chunk_index,
+                score=r.score,
+            )
+            for r in results
+        ],
+        latency_ms=round(latency_ms, 2),
+        index_id=request.index_id,
     )
 
 
-# ── 4. List PDFs ────────────────────────────────────────────────────────
+@app.post("/collection/create", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED, tags=["Documents"])
+async def create_collection(files: List[UploadFile] = File(...)):
+    """
+    Upload multiple PDFs at once and merge them into a single searchable collection.
+    Returns a `collection_id` — use this in /query just like a regular index_id.
 
-@app.get("/pdfs", response_model=PDFListResponse)
-async def list_pdfs():
-    return PDFListResponse(
-        pdfs=vector_store.get_all_pdf_names(),
-        total_chunks=vector_store.size,
+    Querying a collection searches across ALL uploaded PDFs simultaneously.
+    Each result tells you which filename and page it came from.
+
+    Use this when you want to ask questions like:
+    - "Which property has a swimming pool?"
+    - "What is the cheapest property?"
+    - "Which properties are near a metro station?"
+    """
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No files provided.")
+
+    saved_paths = []
+
+    for file in files:
+        if file.content_type != ALLOWED_MIME_TYPE:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"{file.filename}: Only PDF files are accepted.",
+            )
+        contents = await file.read()
+        size_mb = len(contents) / (1024 * 1024)
+        if size_mb > MAX_FILE_SIZE_MB:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"{file.filename} is too large: {size_mb:.1f}MB. Max is {MAX_FILE_SIZE_MB}MB.",
+            )
+        save_path = UPLOAD_DIR / file.filename
+        with open(save_path, "wb") as f:
+            f.write(contents)
+        saved_paths.append(save_path)
+
+    try:
+        result = rag_pipeline.index_collection([str(p) for p in saved_paths])
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Indexing failed: {e}")
+    finally:
+        for p in saved_paths:
+            p.unlink(missing_ok=True)
+
+    return CollectionResponse(
+        collection_id=result["collection_id"],
+        files=[FileSummary(**f) for f in result["files"]],
+        total_chunks=result["total_chunks"],
+        message=f"Collection of {len(result['files'])} PDFs indexed. Use collection_id to query across all documents.",
     )
-
-
-# ── 5. Frontend ─────────────────────────────────────────────────────────
-
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-
-
-@app.get("/", include_in_schema=False)
-async def root():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

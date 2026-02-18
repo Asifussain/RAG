@@ -1,0 +1,119 @@
+Claude is a series of large language models developed by Anthropic. The first model was released in March 2023, and the latest, Claude Sonnet 4.6, in February 2026.
+Training
+See also: Anthropic § Legal issues
+
+Claude models are generative pre-trained transformers that have been pre-trained to predict the next word in large amounts of text. Then, they have been fine-tuned, notably using constitutional AI and reinforcement learning from human feedback (RLHF).[1][2] ClaudeBot searches the web for content. It respects a site's robots.txt but was criticized by iFixit in 2024, before they added their robots.txt, for placing excessive load on their site by scraping content.[3]
+Constitutional AI
+
+Constitutional AI is an approach developed by Anthropic for training AI systems, particularly language models like Claude, to be harmless and helpful without relying on extensive human feedback.[4] Claude, seen as one of the safest language models, publishes its constitution hoping to inspire adoption of constitutions throughout the industry.[5] Because the constitution is published in human-understandable words instead of in opaque computer code, it is hoped that it will make alignment easier to manage and audit.[6]
+
+The first constitution for Claude was published in 2022. The 2023 update listed 75 guidelines for Claude to follow.[7][1][8] The first constitutions pulled ideas directly from the 1948 UN Universal Declaration of Human Rights.[5][4]
+
+The 2026 constitution provided more context to the model, explaining the rationale behind guidelines such as refraining from assisting in undermining democracy.[5][8] The constitution is applied to all public users of the products but does not apply to all contacts, such as some military contracts.[5][8] The 2026 constitution has 23,000 words, up from 2,700 in 2023.[9] The philosopher Amanda Askell is the lead author of the 2026 constitution, with contributions from Joe Carlsmith, Chris Olah, Jared Kaplan, and Holden Karnofsky. The constitution is released under Creative Commons CC0.[10]
+
+The method, detailed in the 2022 paper "Constitutional AI: Harmlessness from AI Feedback", involves two phases: supervised learning and reinforcement learning.[7][11][4] In the supervised learning phase, the model generates responses to prompts, self-critiques these responses based on a set of guiding principles (a "constitution"), and revises the responses. Then the model is fine-tuned on these revised responses.[11][4] For the reinforcement learning from AI feedback (RLAIF) phase, responses are generated, and an AI compares their compliance with the constitution. This dataset of AI feedback is used to train a preference model that evaluates responses based on how much they satisfy the constitution. Claude is then fine-tuned to align with this preference model. This technique is similar to RLHF, except that the comparisons used to train the preference model are AI-generated.[4]
+Features
+Web search
+
+In March 2025, Anthropic added a web search feature to Claude, starting with paying users in the United States.[12] Free users gained access in May 2025.[13]
+Artifacts
+
+In June 2024, Anthropic released the Artifacts feature, allowing users to generate and interact with code snippets and documents.[14][15]
+Computer use
+
+In October 2024, Anthropic released the "computer use" feature, allowing Claude to attempt to navigate computers by interpreting screen content and simulating keyboard and mouse input.[16]
+Claude Code
+
+Claude Code is a command-line interface that runs on a user's computer. It connects to a Claude instance hosted on Anthropic's servers via API, and allows the Claude instance to run commands, read files, write files, and text with the user. Claude can run commands in the foreground or in the background. The behavior of Claude Code is usually configured via markdown documents on the user's computer, such as CLAUDE.md, AGENTS.md, SKILL.md, etc.
+
+Claude Code was released in February 2025 as an agentic command line tool that enables developers to delegate coding tasks directly from their terminal. While initially released for preview testing,[17] it was made generally available in May 2025 alongside Claude 4.[18] Enterprise adoption of Claude Code showed significant growth, with Anthropic reporting a 5.5x increase in Claude Code revenue by July.[19] Anthropic released a web version that October as well as an iOS app.[20] As of January 2026, it was widely considered the best AI coding assistant, when paired with Opus 4.5, with GPT-5.2 also showing significant improvement.[21][22] Claude Code went viral during the winter holidays when people had time to experiment with it, including many non-programmers who used it for vibe coding.[23][24][21]
+
+In August 2025, Anthropic released Claude for Chrome, a Google Chrome extension allowing Claude Code to directly control the browser.[25]
+
+In August 2025, Anthropic revealed that a threat actor called "GTG-2002" used Claude Code to attack at least 17 organizations.[26] In November 2025, Anthropic announced that it had discovered in September that the same threat actor had used Claude Code to automate 80-90% of its espionage cyberattacks against 30 organizations.[27][28] All accounts related to the attacks were banned, and Anthropic notified law enforcement and those affected.[27]
+
+Claude Code is used by Microsoft,[29] Google,[30] and OpenAI employees. In August 2025, Anthropic revoked OpenAI's access to Claude, calling it "a direct violation of our terms of service".[31]
+
+Claude Cowork is a tool similar to Claude Code but with a graphical user interface, aimed at non-technical users. It was released in January 2026 as a "research preview".[32] According to developers, Cowork was mostly built by Claude Code.[33]
+Models
+Version 	Release date 	Status[34] 	Knowledge cutoff[35]
+Claude 	14 March 2023[36] 	Discontinued 	?
+Claude 2 	11 July 2023 	Discontinued 	?
+Claude Instant 1.2 	9 August 2023[37] 	Discontinued 	?
+Claude 2.1 	21 November 2023[38] 	Discontinued 	?
+Claude 3 	4 March 2024[39] 	Discontinued 	?
+Claude 3.5 Sonnet 	20 June 2024[40] 	Discontinued 	April 2024
+Claude 3.5 Haiku 	22 October 2024 	Deprecated 	July 2024
+Claude 3.7 Sonnet 	24 February 2025[41] 	Deprecated 	October 2024
+Claude Sonnet 4 	22 May 2025 	Active 	March 2025
+Claude Opus 4 	22 May 2025 	Active 	March 2025
+Claude Opus 4.1 	5 August 2025 	Active 	March 2025
+Claude Sonnet 4.5 	29 September 2025 	Active 	July 2025
+Claude Haiku 4.5 	15 October 2025 	Active 	July 2025
+Claude Opus 4.5 	24 November 2025 	Active 	May 2025
+Claude Opus 4.6 	5 February 2026 	Active 	August 2025
+Claude Sonnet 4.6 	17 February 2026 	Active 	January 2026
+
+The name "Claude" is reportedly inspired by Claude Shannon, a 20th-century mathematician who laid the foundation for information theory.[42]
+
+Claude models are usually released in three sizes: Haiku, Sonnet, and Opus (from smallest and cheapest to largest and the most expensive).
+
+Anthropic committed to preserve the weights of the retired models "for at least as long as the company exists"; the company also conducts "exit interviews" with models before their retirement.[43]
+Claude
+
+The first version of Claude was released in March 2023.[36] It was available only to selected users approved by Anthropic.[6]
+Claude 2
+
+Claude 2, released in July 2023, became the first Anthropic model available to the general public.[6]
+Claude 2.1
+
+Claude 2.1 doubled the number of tokens that the chatbot could handle, increasing its context window to 200,000 tokens, which equals around 500 pages of written material.[38]
+Claude 3
+
+Claude 3 was released on March 4, 2024.[39] It drew attention for demonstrating an apparent ability to realize it is being artificially tested during 'needle in a haystack' tests.[44]
+Claude 3.5
+Example of Claude 3.5 Sonnet's output
+
+On June 20, 2024, Anthropic released Claude 3.5 Sonnet, which, according to the company's own benchmarks, performed better than the larger Claude 3 Opus. Released alongside 3.5 Sonnet was the new Artifacts capability in which Claude was able to create code in a separate window in the interface and preview in real time the rendered output, such as SVG graphics or websites.[40]
+
+An upgraded version of Claude 3.5 Sonnet was introduced in October 22, 2024, along with Claude 3.5 Haiku.[45] A feature, "computer use," was also released in public beta. This allowed Claude 3.5 Sonnet to interact with a computer's desktop environment by moving the cursor, clicking buttons, and typing text. This development allows the AI to attempt to perform multi-step tasks across different applications.[16][45]
+
+On November 4th, 2024, Anthropic announced that they would be increasing the price of the model.[46]
+Claude 4
+Screenshot of a Claude Sonnet 4 answer describing Wikipedia
+
+On May 22, 2025, Anthropic released two more models: Claude Sonnet 4 and Claude Opus 4.[47][48] Anthropic added API features for developers: a code execution tool, "connectors" to external tools using its Model Context Protocol, and Files API.[49] It classified Opus 4 as a "Level 3" model on the company's four-point safety scale, meaning they consider it so powerful that it poses "significantly higher risk".[50] Anthropic reported that during a safety test involving a fictional scenario, Claude and other frontier LLMs often send a blackmail email to an engineer in order to prevent their replacement.[51][52]
+Claude Opus 4.1
+Screenshot of Claude Opus 4.1 showing both prompt and generated web application (multi-factor authentication with TOTP and WebAuthn)
+
+In August 2025 Anthropic released Opus 4.1. It also enabled a capability for Opus 4 and 4.1 to end conversations that remain "persistently harmful or abusive" as a last resort after multiple refusals.[53]
+Claude Haiku 4.5
+
+Anthropic released Haiku 4.5 on October 15, 2025. Reporting by Inc. described Haiku 4.5 as targeting smaller companies that needed a faster and cheaper assistant, highlighting its availability on the Claude website and mobile app.[54]
+Claude Opus 4.5
+
+Anthropic released Opus 4.5 on November 24, 2025.[55] The main improvements are in coding and workplace tasks like producing spreadsheets. Anthropic introduced a feature called "Infinite Chats" that eliminates context window limit errors.[55][56]
+Claude Opus 4.6
+
+Anthropic released Opus 4.6 on February 5, 2026. The main improvements included an agent team and Claude in PowerPoint.[57]
+Claude Sonnet 4.6
+
+Anthropic released Sonnet 4.6 on February 17, 2026, priced the same as Sonnet 4.5.[58]
+Research
+
+In May 2024, Anthropic issued a mechanistic interpretability paper identifying "features" (internal representations of concepts) in Claude 3 Sonnet, and released "Golden Gate Claude", a model for which the Golden Gate Bridge feature was strongly activated, leading Claude to be "effectively obsessed" with the bridge.[59]
+
+In June 2025, Anthropic tested how Claude 3.7 Sonnet could run a vending machine in the company's office. The instance initially performed its assigned tasks, although poorly, until it eventually malfunctioned and insisted it was a human, contacted the company's security office, and attempted to fire human workers.[60] In December 2025, the experiment continued with Sonnet 4.0 and 4.5.[61]
+
+In November 2025, Anthropic tested Claude's ability to assist humans in programming a robot dog.[62]
+
+In February 2025, Claude 3.7 Sonnet playing 1996 game Pokemon Red started to be livestreamed on Twitch, gathering thousands of viewers.[63][64][65] Similar livestreams were later set with Claude 4.5 Opus, OpenAI's GPT-5.2, and Google's Gemini 3 Pro. Both Claude models were unable to finish the game.[66]
+
+In December 2025, Claude was used to plan a route for NASA's Mars rover, Perseverance. NASA engineers used Claude Code to prepare a route of around 400 meters using the Rover Markup Language.[67][68]
+User base
+
+The Wired journalist Kylie Robison wrote that Claude's "fan base is unique", comparing it to more ordinary ChatGPT users. In July 2025, when Anthropic retired its Claude 3 Sonnet model, around 200 people gathered in San Francisco for a "funeral".[69]
+
+According to Robison,[69]
+
+    I’ve never seen such a devoted fanbase to what is, at the end of the day, a software tool. Sure, Linux users wear the operating system like a badge of honor. But the Claude fan base goes way beyond that—bordering on the fanatical. As my reporting makes clear, some users see the model as a confidant—and even (in Steinberger’s case) an addiction. That only makes sense if they believe there is something alive in the machine. Or at least some “magic lodged within” it.

@@ -1,33 +1,33 @@
-import os
+"""
+config.py — Central configuration for the RAG pipeline.
+Tune these values to balance speed vs. accuracy.
+"""
+
 from pathlib import Path
 
-# ── Project Paths ──────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-UPLOADS_DIR = DATA_DIR / "uploads"
-PROCESSED_DIR = DATA_DIR / "processed"
-INDEX_DIR = DATA_DIR / "index"
+# ── Paths ──────────────────────────────────────────────────────────────────
+BASE_DIR     = Path(__file__).resolve().parent.parent
+UPLOAD_DIR   = BASE_DIR / "uploads"
+INDEX_DIR    = BASE_DIR / "indexes"
 
-# Ensure directories exist
-for _dir in [UPLOADS_DIR, PROCESSED_DIR, INDEX_DIR]:
-    _dir.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(exist_ok=True)
+INDEX_DIR.mkdir(exist_ok=True)
 
-# ── Chunking Parameters ───────────────────────────────────────────────────
-CHUNK_SIZE_TOKENS = 300        # ~400 words per chunk
-CHUNK_OVERLAP_TOKENS = 50     # ~67 words overlap between chunks
-DEDUP_SIMILARITY_THRESHOLD = 0.90  # Skip chunks with >90% similarity
+# ── Embedding Model ────────────────────────────────────────────────────────
+# all-MiniLM-L6-v2  → fast, small, good general-purpose baseline (~80MB)
+# all-mpnet-base-v2 → slower but more accurate (~420MB) — swap if accuracy matters more
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# ── Embedding Model ───────────────────────────────────────────────────────
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_DIMENSION = 384
-EMBEDDING_BATCH_SIZE = 32
+# ── Chunking ───────────────────────────────────────────────────────────────
+# Smaller chunks = more focused retrieval, but more index entries
+# Larger chunks = more context per result, but noisier matches
+CHUNK_SIZE    = 200
+CHUNK_OVERLAP = 30
 
-# ── FAISS ─────────────────────────────────────────────────────────────────
-FAISS_INDEX_PATH = INDEX_DIR / "faiss.index"
-METADATA_PATH = INDEX_DIR / "metadata.json"
+# ── Retrieval ──────────────────────────────────────────────────────────────
+DEFAULT_TOP_K = 3      # Results returned per query
+MAX_TOP_K     = 10     # Hard cap to prevent abuse / latency blowout
 
-# ── API ───────────────────────────────────────────────────────────────────
-MAX_UPLOAD_SIZE_MB = 50
-ALLOWED_EXTENSIONS = {".pdf"}
-DEFAULT_TOP_K = 3
-MAX_TOP_K = 10
+# ── Upload constraints ─────────────────────────────────────────────────────
+MAX_FILE_SIZE_MB  = 50       # Reject files above this size
+ALLOWED_MIME_TYPE = "application/pdf"
