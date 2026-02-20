@@ -733,12 +733,12 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    const API = 'http://localhost:8000';
+    const API = window.location.origin;
 
     // ── State ──────────────────────────────────────────
-    let pendingFiles = [];       // files staged for upload
-    let indexedDocs  = [];       // {index_id, filename, total_pages, total_chunks}
-    let queryMode    = 'all';    // 'all' | 'specific'
+    let pendingFiles = [];
+    let indexedDocs  = []; 
+    let queryMode    = 'all';
 
     // ── DOM refs ───────────────────────────────────────
     const dropZone      = document.getElementById('dropZone');

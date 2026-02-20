@@ -14,16 +14,6 @@ Two-stage retrieval strategy:
     Dramatically improves precision — especially for specific factual queries
     like "carpet area of Sky Villa 1" where the bi-encoder may rank
     descriptive text above the actual number.
-
-Latency breakdown (CPU):
-  Stage 1:  ~5–10ms   (FAISS vector search)
-  Stage 2:  ~80–200ms (cross-encoder on 20 pairs)
-  Total:    ~100–250ms — well within 2s target
-
-Other fixes:
-  - IndexFlatIP (inner product) + normalized embeddings = cosine similarity
-  - Score threshold to suppress irrelevant results
-  - Chunk size 400 chars for better semantic context per chunk
 """
 
 import re
@@ -176,8 +166,6 @@ class RAGPipeline:
     Stage 1 — FAISS bi-encoder: fast, fetches CANDIDATE_K candidates.
     Stage 2 — CrossEncoder reranker: precise, re-scores candidates and
               returns the true top_k in correct relevance order.
-
-    Both models load once at startup — zero per-request model loading cost.
     """
 
     def __init__(self):
@@ -220,7 +208,6 @@ class RAGPipeline:
             )
 
     # ── Registry — stores filename metadata per index_id ─────────────────
-    # Persisted as indexes/registry.json so filenames survive restarts.
 
     def _registry_path(self):
         return INDEX_DIR / "registry.json"
@@ -365,7 +352,7 @@ class RAGPipeline:
         Returns (results, stage1_latency_ms, stage2_latency_ms).
         """
         top_k      = min(top_k, MAX_TOP_K)
-        candidate_k = max(CANDIDATE_K, top_k)  # always fetch at least top_k
+        candidate_k = max(CANDIDATE_K, top_k) 
 
         # ── Stage 1: FAISS bi-encoder search ──────────────────────────────
         t0 = time.perf_counter()
@@ -384,8 +371,6 @@ class RAGPipeline:
             return [], stage1_ms, 0.0
 
         # ── Stage 2: Cross-encoder reranking ──────────────────────────────
-        # Feed (query, chunk_text) pairs — cross-encoder reads both together
-        # and produces a relevance score that understands intent vs. content
         t1 = time.perf_counter()
         pairs         = [(question, doc.page_content) for doc, _ in candidates]
         rerank_scores = self._reranker.predict(pairs)   # returns raw logits (higher = more relevant)
