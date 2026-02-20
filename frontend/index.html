@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real Estate Doc Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Reset & Variables ───────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0c0c0d;
+      --surface:   #141416;
+      --border:    #242428;
+      --border-hi: #3a3a42;
+      --text:      #e8e8ea;
+      --muted:     #5a5a65;
+      --accent:    #c8f04a;
+      --accent-dim:#8aab28;
+      --danger:    #ff5f5f;
+      --mono:      'DM Mono', monospace;
+      --sans:      'DM Sans', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Noise texture overlay ───────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    /* ── Layout ──────────────────────────────────────── */
+    .app {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    header {
+      padding: 48px 0 40px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .logo {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .logo span {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    h1 {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      margin-top: 12px;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--accent);
+    }
+
+    .status-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-pill .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+
+    .status-pill.online .dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .status-pill.online { color: var(--text); border-color: var(--border-hi); }
+
+    /* ── Section titles ──────────────────────────────── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Upload zone ─────────────────────────────────── */
+    .upload-section {
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .drop-zone {
+      border: 1px dashed var(--border-hi);
+      border-radius: 4px;
+      padding: 36px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(200, 240, 74, 0.03);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .drop-icon {
+      font-family: var(--mono);
+      font-size: 28px;
+      color: var(--border-hi);
+      margin-bottom: 12px;
+      display: block;
+      transition: color 0.2s;
+    }
+
+    .drop-zone:hover .drop-icon { color: var(--accent); }
+
+    .drop-text {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .drop-text strong { color: var(--text); font-weight: 500; }
+
+    .upload-btn {
+      margin-top: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #0c0c0d;
+      border: none;
+      padding: 10px 20px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .upload-btn:hover { background: #d9ff50; }
+    .upload-btn:active { transform: scale(0.98); }
+    .upload-btn:disabled { background: var(--border-hi); color: var(--muted); cursor: not-allowed; }
+
+    /* ── File queue ──────────────────────────────────── */
+    .file-queue {
+      margin-top: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .file-tag {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 8px 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      animation: slideIn 0.2s ease both;
+    }
+
+    .file-tag .fname { color: var(--text); }
+    .file-tag .fsize { color: var(--muted); margin-left: 8px; }
+
+    .file-tag .remove {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 4px;
+      transition: color 0.15s;
+    }
+
+    .file-tag .remove:hover { color: var(--danger); }
+
+    /* ── Document library ────────────────────────────── */
+    .library-section {
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .doc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+    }
+
+    .doc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 16px;
+      transition: border-color 0.2s, transform 0.15s;
+      cursor: default;
+      animation: fadeUp 0.3s ease both;
+    }
+
+    .doc-card:hover {
+      border-color: var(--border-hi);
+      transform: translateY(-1px);
+    }
+
+    .doc-card .doc-icon {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+
+    .doc-card .doc-name {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      word-break: break-all;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .doc-card .doc-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      gap: 12px;
+    }
+
+    .empty-library {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      padding: 24px;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 3px;
+    }
+
+    /* ── Library controls ────────────────────────────── */
+    .library-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+
+    .library-search {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .library-search:focus { border-color: var(--accent); }
+    .library-search::placeholder { color: var(--muted); }
+
+    .library-count {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .page-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 12px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 11px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); }
+    .page-btn:disabled { color: var(--muted); cursor: not-allowed; }
+    .page-info { color: var(--muted); }
+
+    /* ── Query section ───────────────────────────────── */
+    .query-section {
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .query-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      width: fit-content;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 8px 18px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-right: 1px solid var(--border);
+    }
+
+    .tab-btn:last-child { border-right: none; }
+    .tab-btn.active { background: var(--accent); color: #0c0c0d; font-weight: 500; }
+    .tab-btn:not(.active):hover { background: var(--surface); color: var(--text); }
+
+    .query-box {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .query-input-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    .query-input-wrap::before {
+      content: '›';
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: var(--mono);
+      font-size: 16px;
+      color: var(--accent);
+      pointer-events: none;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 12px 14px 12px 30px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    select {
+      cursor: pointer;
+      padding-left: 14px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a5a65'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    .specific-index-row {
+      margin-bottom: 10px;
+      display: none;
+    }
+
+    .specific-index-row.visible { display: block; }
+
+    .query-btn {
+      background: var(--accent);
+      color: #0c0c0d;
+      border: none;
+      padding: 12px 22px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 3px;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+
+    .query-btn:hover { background: #d9ff50; }
+    .query-btn:active { transform: scale(0.98); }
+    .query-btn:disabled { background: var(--border-hi); color: var(--muted); cursor: not-allowed; }
+
+    /* ── Results ─────────────────────────────────────── */
+    .results-section {
+      margin-top: 32px;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .results-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 20px;
+    }
+
+    .results-meta span { color: var(--text); }
+
+    .result-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
+      border-radius: 3px;
+      padding: 18px 20px;
+      margin-bottom: 10px;
+      transition: border-left-color 0.2s;
+      animation: slideIn 0.25s ease both;
+    }
+
+    .result-card:nth-child(1) { animation-delay: 0s; border-left-color: var(--accent); }
+    .result-card:nth-child(2) { animation-delay: 0.05s; border-left-color: var(--accent-dim); }
+    .result-card:nth-child(3) { animation-delay: 0.1s; }
+    .result-card:nth-child(n+4) { animation-delay: 0.15s; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .result-source {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .result-source .filename {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .score-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--muted);
+    }
+
+    .score-badge.top { border-color: var(--accent); color: var(--accent); }
+
+    .result-content {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    /* ── Toast / progress ────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 3px;
+      padding: 12px 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      max-width: 320px;
+      animation: slideIn 0.2s ease both;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toast.success { border-left: 3px solid var(--accent); }
+    .toast.error   { border-left: 3px solid var(--danger); color: var(--danger); }
+    .toast.loading { border-left: 3px solid var(--muted); }
+
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 1px solid var(--border-hi);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Progress bar ────────────────────────────────── */
+    .progress-bar {
+      height: 1px;
+      background: var(--border);
+      margin-top: 16px;
+      border-radius: 1px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-bar.visible { display: block; }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    /* ── Animations ──────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── Scrollbar ───────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header>
+      <div>
+        <div class="logo">/real estate doc intelligence</div>
+        <h1>Ask anything.<br><em>Find any property.</em></h1>
+      </div>
+      <div class="status-pill" id="statusPill">
+        <div class="dot"></div>
+        <span id="statusText">connecting...</span>
+      </div>
+    </header>
+
+    <!-- Upload -->
+    <section class="upload-section">
+      <div class="section-label">01 — Upload Documents</div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf" multiple />
+        <span class="drop-icon">⊕</span>
+        <div class="drop-text">
+          <strong>Drop PDFs here</strong> or click to browse<br>
+          Multiple files supported · Max 50MB each
+        </div>
+      </div>
+
+      <div class="file-queue" id="fileQueue"></div>
+
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <button class="upload-btn" id="uploadBtn" disabled>
+          ↑ Index Documents
+        </button>
+      </div>
+    </section>
+
+    <!-- Library -->
+    <section class="library-section">
+      <div class="section-label">02 — Document Library</div>
+      <div class="library-controls">
+        <input class="library-search" id="librarySearch" placeholder="Search documents…" autocomplete="off" />
+        <span class="library-count" id="libraryCount"></span>
+      </div>
+      <div class="doc-grid" id="docGrid">
+        <div class="empty-library">No documents indexed yet.</div>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;">
+        <button class="page-btn" id="prevPage">← Prev</button>
+        <span class="page-info" id="pageInfo"></span>
+        <button class="page-btn" id="nextPage">Next →</button>
+      </div>
+    </section>
+
+    <!-- Query -->
+    <section class="query-section">
+      <div class="section-label">03 — Query</div>
+
+      <div class="query-tabs">
+        <button class="tab-btn active" data-mode="all">Search All</button>
+        <button class="tab-btn" data-mode="specific">Specific Doc</button>
+      </div>
+
+      <div class="specific-index-row" id="specificIndexRow">
+        <select id="indexSelect">
+          <option value="">— select an indexed document —</option>
+        </select>
+      </div>
+
+      <div class="query-box">
+        <div class="query-input-wrap">
+          <input
+            type="text"
+            id="queryInput"
+            placeholder="What are the nearby landmarks?"
+            autocomplete="off"
+          />
+        </div>
+        <button class="query-btn" id="queryBtn">Search →</button>
+      </div>
+
+      <div class="results-section" id="resultsSection" style="display:none;"></div>
+    </section>
+
+  </div>
+
+  <!-- Toasts -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    // ── State ──────────────────────────────────────────
+    let pendingFiles = [];       // files staged for upload
+    let indexedDocs  = [];       // {index_id, filename, total_pages, total_chunks}
+    let queryMode    = 'all';    // 'all' | 'specific'
+
+    // ── DOM refs ───────────────────────────────────────
+    const dropZone      = document.getElementById('dropZone');
+    const fileInput     = document.getElementById('fileInput');
+    const fileQueue     = document.getElementById('fileQueue');
+    const uploadBtn     = document.getElementById('uploadBtn');
+    const progressBar   = document.getElementById('progressBar');
+    const progressFill  = document.getElementById('progressFill');
+    const docGrid       = document.getElementById('docGrid');
+    const queryInput    = document.getElementById('queryInput');
+    const queryBtn      = document.getElementById('queryBtn');
+    const resultsSection= document.getElementById('resultsSection');
+    const statusPill    = document.getElementById('statusPill');
+    const statusText    = document.getElementById('statusText');
+    const specificRow   = document.getElementById('specificIndexRow');
+    const indexSelect   = document.getElementById('indexSelect');
+    const toastContainer= document.getElementById('toastContainer');
+
+    // ── Toast ──────────────────────────────────────────
+    function toast(msg, type = 'loading', duration = 3500) {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      el.innerHTML = type === 'loading'
+        ? `<div class="spinner"></div><span>${msg}</span>`
+        : `<span>${msg}</span>`;
+      toastContainer.appendChild(el);
+      if (duration > 0) setTimeout(() => el.remove(), duration);
+      return el;
+    }
+
+    // ── Health check ───────────────────────────────────
+    async function checkHealth() {
+      try {
+        const r = await fetch(`${API}/health`);
+        const d = await r.json();
+        statusPill.classList.add('online');
+        statusText.textContent = `online · ${d.active_indexes} indexes`;
+      } catch {
+        statusText.textContent = 'offline';
+      }
+    }
+
+    // ── Library state ──────────────────────────────────
+    const PAGE_SIZE = 12;
+    let allDocs       = [];   // full list from server + new uploads
+    let filteredDocs  = [];   // after search filter
+    let currentPage   = 1;
+
+    // ── Load existing documents from server ────────────
+    async function loadDocuments() {
+      try {
+        const r = await fetch(`${API}/documents`);
+        const d = await r.json();
+        if (d.documents && d.documents.length > 0) {
+          // Server now returns full metadata {index_id, filename, total_pages, ...}
+          d.documents.forEach(doc => {
+            if (!indexedDocs.find(x => x.index_id === doc.index_id)) {
+              indexedDocs.push({
+                index_id:     doc.index_id,
+                filename:     doc.filename || doc.index_id.slice(0, 8) + '…',
+                total_pages:  doc.total_pages,
+                total_chunks: doc.total_chunks,
+                uploaded_at:  doc.uploaded_at,
+                restored:     true,
+              });
+            }
+          });
+          allDocs = [...indexedDocs];
+          applyLibraryFilter();
+        }
+      } catch { /* server may not have any yet */ }
+    }
+
+    // ── Search filter ───────────────────────────────────
+    document.getElementById('librarySearch').addEventListener('input', applyLibraryFilter);
+
+    function applyLibraryFilter() {
+      const q = document.getElementById('librarySearch').value.toLowerCase().trim();
+      filteredDocs = q
+        ? allDocs.filter(d => d.filename.toLowerCase().includes(q))
+        : [...allDocs];
+      currentPage = 1;
+      renderDocPage();
+    }
+
+    // ── Pagination controls ─────────────────────────────
+    document.getElementById('prevPage').addEventListener('click', () => {
+      if (currentPage > 1) { currentPage--; renderDocPage(); }
+    });
+    document.getElementById('nextPage').addEventListener('click', () => {
+      const totalPages = Math.ceil(filteredDocs.length / PAGE_SIZE);
+      if (currentPage < totalPages) { currentPage++; renderDocPage(); }
+    });
+
+    function renderDocPage() {
+      const total      = filteredDocs.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const start      = (currentPage - 1) * PAGE_SIZE;
+      const pageDocs   = filteredDocs.slice(start, start + PAGE_SIZE);
+
+      document.getElementById('libraryCount').textContent =
+        total > 0 ? `${total} document${total !== 1 ? 's' : ''}` : '';
+
+      renderDocCards(pageDocs);
+
+      const pagination = document.getElementById('pagination');
+      if (total <= PAGE_SIZE) {
+        pagination.style.display = 'none';
+      } else {
+        pagination.style.display = 'flex';
+        document.getElementById('pageInfo').textContent = `page ${currentPage} / ${totalPages}`;
+        document.getElementById('prevPage').disabled = currentPage === 1;
+        document.getElementById('nextPage').disabled = currentPage === totalPages;
+      }
+    }
+
+    // ── File selection ─────────────────────────────────
+    function addFiles(files) {
+      for (const f of files) {
+        if (!f.name.endsWith('.pdf')) { toast(`${f.name} is not a PDF`, 'error'); continue; }
+        if (f.size > 50 * 1024 * 1024) { toast(`${f.name} exceeds 50MB`, 'error'); continue; }
+        if (pendingFiles.find(p => p.name === f.name)) continue;
+        pendingFiles.push(f);
+      }
+      renderQueue();
+    }
+
+    function renderQueue() {
+      fileQueue.innerHTML = '';
+      pendingFiles.forEach((f, i) => {
+        const tag = document.createElement('div');
+        tag.className = 'file-tag';
+        tag.innerHTML = `
+          <div>
+            <span class="fname">${f.name}</span>
+            <span class="fsize">${(f.size / 1024 / 1024).toFixed(2)} MB</span>
+          </div>
+          <button class="remove" data-i="${i}">✕</button>
+        `;
+        fileQueue.appendChild(tag);
+      });
+      uploadBtn.disabled = pendingFiles.length === 0;
+    }
+
+    fileQueue.addEventListener('click', e => {
+      if (e.target.classList.contains('remove')) {
+        pendingFiles.splice(+e.target.dataset.i, 1);
+        renderQueue();
+      }
+    });
+
+    fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      addFiles([...e.dataTransfer.files]);
+    });
+
+    // ── Upload ─────────────────────────────────────────
+    uploadBtn.addEventListener('click', async () => {
+      if (!pendingFiles.length) return;
+
+      uploadBtn.disabled = true;
+      progressBar.classList.add('visible');
+      progressFill.style.width = '10%';
+
+      const t = toast(`Indexing ${pendingFiles.length} file(s)…`, 'loading', 0);
+
+      try {
+        const results = [];
+
+        if (pendingFiles.length === 1) {
+          // Single upload
+          const fd = new FormData();
+          fd.append('file', pendingFiles[0]);
+          progressFill.style.width = '50%';
+          const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+          if (!r.ok) throw new Error((await r.json()).detail);
+          results.push(await r.json());
+        } else {
+          // Multi upload → collection
+          const fd = new FormData();
+          pendingFiles.forEach(f => fd.append('files', f));
+          progressFill.style.width = '50%';
+          const r = await fetch(`${API}/collection/create`, { method: 'POST', body: fd });
+          if (!r.ok) throw new Error((await r.json()).detail);
+          const col = await r.json();
+          // Flatten collection into doc-like entries for display
+          col.files.forEach(f => results.push({
+            index_id: col.collection_id,
+            filename: f.filename,
+            total_pages: f.total_pages || '?',
+            total_chunks: f.chunks || '?',
+          }));
+        }
+
+        progressFill.style.width = '100%';
+        t.remove();
+        toast(`✓ Indexed ${pendingFiles.length} file(s) successfully`, 'success');
+
+        results.forEach(doc => {
+          if (!indexedDocs.find(d => d.index_id === doc.index_id && d.filename === doc.filename)) {
+            indexedDocs.push(doc);
+          }
+        });
+
+        // Keep allDocs in sync and re-apply filter + pagination
+        allDocs = [...indexedDocs];
+        pendingFiles = [];
+        renderQueue();
+        applyLibraryFilter();
+        checkHealth();
+
+      } catch (err) {
+        t.remove();
+        toast(`Error: ${err.message}`, 'error');
+        progressFill.style.width = '0%';
+      } finally {
+        uploadBtn.disabled = false;
+        setTimeout(() => {
+          progressBar.classList.remove('visible');
+          progressFill.style.width = '0%';
+        }, 800);
+      }
+    });
+
+    // ── Render doc library ─────────────────────────────
+    function renderDocCards(docs) {
+      if (!docs.length) {
+        docGrid.innerHTML = '<div class="empty-library">No documents indexed yet.</div>';
+        return;
+      }
+
+      docGrid.innerHTML = '';
+      docs.forEach(doc => {
+        const card = document.createElement('div');
+        card.className = 'doc-card';
+        card.innerHTML = `
+          <div class="doc-icon">PDF ▸</div>
+          <div class="doc-name">${doc.filename}</div>
+          <div class="doc-meta">
+            ${doc.total_pages ? `<span>${doc.total_pages}p</span>` : ''}
+            ${doc.total_chunks ? `<span>${doc.total_chunks} chunks</span>` : ''}
+            ${doc.restored ? '<span>restored</span>' : ''}
+          </div>
+        `;
+        docGrid.appendChild(card);
+
+        // Add to select dropdown
+        if (!doc.restored) {
+          const opt = document.createElement('option');
+          opt.value = doc.index_id;
+          opt.textContent = doc.filename;
+          indexSelect.appendChild(opt);
+        }
+      });
+    }
+
+    // ── Query tabs ─────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        queryMode = btn.dataset.mode;
+        specificRow.classList.toggle('visible', queryMode === 'specific');
+      });
+    });
+
+    // ── Query ──────────────────────────────────────────
+    queryBtn.addEventListener('click', runQuery);
+    queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') runQuery(); });
+
+    async function runQuery() {
+      const q = queryInput.value.trim();
+      if (!q) return;
+
+      queryBtn.disabled = true;
+      queryBtn.textContent = '...';
+      resultsSection.style.display = 'none';
+
+      try {
+        let r, data;
+
+        if (queryMode === 'all') {
+          r = await fetch(`${API}/query/all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: q, top_k: 5 }),
+          });
+        } else {
+          const idx = indexSelect.value;
+          if (!idx) { toast('Select a document first', 'error'); return; }
+          r = await fetch(`${API}/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: q, index_id: idx, top_k: 5 }),
+          });
+        }
+
+        if (!r.ok) throw new Error((await r.json()).detail);
+        data = await r.json();
+        renderResults(data);
+
+      } catch (err) {
+        toast(`Query failed: ${err.message}`, 'error');
+      } finally {
+        queryBtn.disabled = false;
+        queryBtn.textContent = 'Search →';
+      }
+    }
+
+    // ── Render results ─────────────────────────────────
+    function renderResults(data) {
+      resultsSection.style.display = 'block';
+      resultsSection.innerHTML = '';
+
+      // Meta bar
+      const meta = document.createElement('div');
+      meta.className = 'results-meta';
+      meta.innerHTML = `
+        <div>results <span>${data.results.length}</span></div>
+        <div>retrieve <span>${data.stage1_latency_ms}ms</span></div>
+        <div>rerank <span>${data.stage2_latency_ms}ms</span></div>
+        <div>total <span>${data.total_latency_ms}ms</span></div>
+        <div>index <span>${data.index_id === 'master' ? 'all documents' : data.index_id.slice(0,8)}</span></div>
+      `;
+      resultsSection.appendChild(meta);
+
+      if (!data.results.length) {
+        resultsSection.innerHTML += '<div class="empty-library">No relevant results found.</div>';
+        return;
+      }
+
+      data.results.forEach((r, i) => {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        const isTop = i === 0;
+        card.innerHTML = `
+          <div class="result-header">
+            <div class="result-source">
+              <span class="filename">${r.filename}</span>
+              <span>page ${r.page_number} / ${r.total_pages}</span>
+              <span>chunk #${r.chunk_index}</span>
+            </div>
+            <div class="score-badge ${isTop ? 'top' : ''}">score ${r.score}</div>
+          </div>
+          <div class="result-content">${escapeHtml(r.content)}</div>
+        `;
+        resultsSection.appendChild(card);
+      });
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Init ───────────────────────────────────────────
+    checkHealth();
+    loadDocuments();
+  </script>
+</body>
+</html>

@@ -1,3 +1,6 @@
+numpy
+requests
+
 FastAPI
 uvicorn[standard]
 python-multipart

@@ -1,6 +1,6 @@
 # Real Estate Document Intelligence API
 
-PDF → Clean Text → Chunks → FAISS → Semantic Search via REST API
+A lightweight, high-performance RAG (Retrieval-Augmented Generation) system for querying real estate PDFs using natural language. Built with a two-stage retrieval pipeline: FAISS bi-encoder for fast candidate retrieval, followed by a cross-encoder reranker for precision.
 
 ---
 
@@ -11,11 +11,15 @@ real-estate-rag/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py        # FastAPI routes
-│   ├── pipeline.py    # RAG logic (PDF loading, embedding, FAISS)
+│   ├── pipeline.py    # Two-stage RAG logic (FAISS + CrossEncoder)
 │   ├── models.py      # Pydantic request/response schemas
-│   └── config.py      # All tunables (chunk size, model, paths)
+│   └── config.py      # All tunables (chunk size, models, thresholds)
+├── frontend/
+│   └── index.html     # Single-file UI (no framework, pure HTML/CSS/JS)
 ├── uploads/           # Temp storage for incoming PDFs (auto-cleaned)
 ├── indexes/           # Persisted FAISS indexes (survive restarts)
+│   └── master/        # Master index — all uploaded PDFs merged here
+├── eval.py            # Evaluation script (latency + accuracy metrics)
 ├── requirements.txt
 └── README.md
 ```
@@ -25,12 +29,12 @@ real-estate-rag/
 ## Setup
 
 ```bash
-# 1. Clone / unzip the project
+# 1. Clone the repository
 cd real-estate-rag
 
-# 2. Create virtual environment
+# 2. Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate       # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -39,154 +43,178 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The embedding model (`all-MiniLM-L6-v2`, ~80MB) downloads automatically on first run.
+On first run, two models download automatically:
+- `all-MiniLM-L6-v2` (~80MB) — bi-encoder for FAISS indexing
+- `cross-encoder/ms-marco-MiniLM-L-6-v2` (~80MB) — reranker for precision
+
+Visit `http://localhost:8000` for the UI or `http://localhost:8000/docs` for the Swagger API.
 
 ---
 
-## API Usage
+## How It Works — Two-Stage Retrieval
 
-### Interactive docs
-Visit `http://localhost:8000/docs` for the Swagger UI — you can test all endpoints directly from the browser.
+```
+PDF Upload
+  │
+  ├─► PyMuPDF extraction → text cleaning → chunking (400 chars)
+  ├─► Bi-encoder embeds chunks → FAISS IndexFlatIP (cosine similarity)
+  ├─► Per-document index saved to disk
+  └─► Merged into master index (all PDFs searchable together)
 
----
-
-### 1. Upload a PDF
-
-```bash
-curl -X POST http://localhost:8000/upload \
-  -F "file=@your_property.pdf"
+Query
+  │
+  ├─► Stage 1: FAISS fetches top-20 candidates (~8ms)
+  │     Bi-encoder embeds query, cosine search, score threshold filter
+  │
+  └─► Stage 2: CrossEncoder reranks candidates (~185ms)
+        Reads (query + chunk) together, understands intent vs. content
+        Returns true top-K in correct relevance order
 ```
 
-**Response:**
-```json
-{
-  "index_id": "3f2a1c4d-...",
-  "filename": "your_property.pdf",
-  "total_pages": 12,
-  "total_chunks": 147,
-  "message": "PDF indexed successfully. Use the index_id to query."
-}
-```
-
----
-
-### 2. Query the PDF
-
-```bash
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What are the nearby landmarks?",
-    "index_id": "3f2a1c4d-...",
-    "top_k": 3
-  }'
-```
-
-**Response:**
-```json
-{
-  "question": "What are the nearby landmarks?",
-  "index_id": "3f2a1c4d-...",
-  "latency_ms": 42.3,
-  "results": [
-    {
-      "content": "Located 5 minutes from DLF Mall of India...",
-      "filename": "your_property.pdf",
-      "page_number": 3,
-      "total_pages": 12,
-      "chunk_index": 18,
-      "score": 0.312
-    }
-  ]
-}
-```
-
----
-
-### 3. Health check
-
-```bash
-curl http://localhost:8000/health
-```
-
----
+**Why two stages?**
+A bi-encoder embeds query and document independently, fast but imprecise based on evaluation, so shifted to two stages using cross-encoder. A cross-encoder reads them together and understands semantic intent, improving ranking accuracy for specific factual queries.
 
 ## Success Metrics
 
-### Performance (measured on a 12-page real estate brochure, CPU-only)
+### Performance
+Measured across 20 evaluation queries on CPU (no GPU):
 
 | Metric | Value |
-|--------|-------|
-| Upload + index time | ~4–8s |
-| Average query latency | ~35ms |
-| P95 query latency | ~60ms |
+|---|---|
+| Average total latency | **192.4ms** |
+| P95 latency | **245.2ms** |
+| P99 latency | 263.7ms |
+| Min / Max | 102.5ms / 268.3ms |
+| Avg Stage 1 (FAISS) | 7.7ms |
+| Avg Stage 2 (Rerank) | 184.7ms |
 
-> Query latency is fast because embedding the query (~5ms) and FAISS L2 search (~1ms) are both cheap. Indexing is the only slow step, and it's one-time per PDF.
+All queries comfortably within the 2 second target. Stage 2 (cross-encoder reranking) accounts for ~96% of total latency, the expected tradeoff for significantly improved ranking precision.
 
 ---
 
 ### Retrieval Quality
 
-Tested with 18 questions against `E128-Skyvilla-Document.pdf`:
+Evaluated against 20 questions spanning two real estate PDFs:
+- `E128-Skyvilla-Document.pdf` — Estate 128 Sky Villas, Noida
+- `222-Rajpur-Document.pdf` — 222 Rajpur, Dehradun
 
-| # | Question | Top-1 ✓ | Top-3 ✓ |
-|---|----------|---------|---------|
-| 1 | What are the nearby landmarks? | ✓ | ✓ |
-| 2 | What is the price of the property? | ✓ | ✓ |
-| 3 | How many bedrooms does the property have? | ✓ | ✓ |
-| 4 | What is the total area / square footage? | ✓ | ✓ |
-| 5 | Is there parking available? | ✓ | ✓ |
-| 6 | What floor is the unit on? | ✗ | ✓ |
-| 7 | What amenities are available? | ✓ | ✓ |
-| 8 | What is the developer's name? | ✓ | ✓ |
-| 9 | Is there a swimming pool? | ✓ | ✓ |
-| 10 | What is the project location? | ✓ | ✓ |
-| 11 | What is the possession date? | ✓ | ✓ |
-| 12 | Are there any payment plan options? | ✗ | ✓ |
-| 13 | What security features are mentioned? | ✓ | ✓ |
-| 14 | What is the carpet area? | ✓ | ✓ |
-| 15 | How far is the nearest metro station? | ✓ | ✓ |
-| 16 | What is the RERA registration number? | ✓ | ✓ |
-| 17 | Does the project have a gym? | ✓ | ✓ |
-| 18 | What are the nearby hospitals? | ✗ | ✓ |
+| Metric | Score |
+|---|---|
+| **Top-1 Accuracy** | **75.0% (15/20)** |
+| **Top-3 Accuracy** | **95.0% (19/20)** |
 
-**Top-1 Accuracy: 83% (15/18)**
-**Top-3 Accuracy: 100% (18/18)**
+#### Evaluation Set
+
+| ID | Question | Top-1 | Top-3 |
+|---|---|:---:|:---:|
+| Q01 | Carpet area of Sky Villa 1 vs Sky Villa 2 
+| Q02 | Does Estate 128 triplex include pool and gym? 
+| Q03 | Separate entrances for guest rooms in Estate 128? 
+| Q04 | Architectural features of the double-height living room 
+| Q05 | How wide are the wraparound balconies at Estate 128? 
+| Q06 | Is Estate 128 RERA registered and what is the number? 
+| Q07 | Private elevators in Estate 128 Sky Villas? 
+| Q08 | Air conditioning system used in Estate 128?
+| Q09 | Built-up area and carpet area of a Townhouse in 222 Rajpur 
+| Q10 | Courtyard Villas vs Forest Villas unit count
+| Q11 | Plot size range for Townhouses in 222 Rajpur 
+| Q12 | Forest Villas connection to landscape 
+| Q13 | Sky court or atrium in 222 Rajpur townhouses? 
+| Q14 | Service areas separated from private spaces in 222 Rajpur 
+| Q15 | Private elevators in Forest Villas Dehradun?
+| Q16 | Unique botanical feature at 222 Rajpur 
+| Q17 | Primary natural views at 222 Rajpur 
+| Q18 | UKRERA registration number for 222 Rajpur 
+| Q19 | Seismic zone for 222 Rajpur structural design 
+| Q20 | Car recognition security + drive time to Jolly Grant Airport
 
 ---
 
-## System Behavior & Bottlenecks
+## System Behavior
 
 ### What happens as PDFs grow larger?
-- **Indexing time** scales roughly linearly with page count (~0.5s per page on CPU).
-- **Query latency stays constant** — FAISS L2 search on a flat index is O(n) but fast in practice up to ~100k chunks. Beyond that, switch to FAISS `IVF` (inverted file) index for sub-linear search.
-- **Memory grows linearly** — each chunk's 384-dim float32 vector = ~1.5KB. A 200-page PDF (~2000 chunks) ≈ 3MB RAM. Not a concern until thousands of PDFs are in memory simultaneously.
+
+| Component | Behavior |
+| Indexing time | Scales linearly ~0.5s per page on CPU |
+| Query latency | Stays constant — FAISS search is O(n) but fast up to ~500k chunks |
+| RAM usage | ~1.5KB per chunk (384-dim float32). 200-page PDF ≈ 3MB. Not a concern until thousands of PDFs |
+| Reranker latency | Scales with CANDIDATE_K (fixed at 20), not index size — stays constant |
 
 ### What would break first in production?
-1. **In-memory index dict** — if the server restarts or you run multiple workers (e.g., `uvicorn --workers 4`), each worker has its own index dict. Queries routed to a worker that hasn't loaded the index will fail with 404. Fix: use a shared store (Redis + serialized FAISS, or a dedicated vector DB).
-2. **Synchronous indexing on the upload endpoint** — large PDFs will block the request for 10–30s. Fix: offload to a background task queue (Celery, ARQ) and return a job ID immediately.
-3. **Flat FAISS index** — fine for prototypes, but doesn't scale past ~500k chunks without approximate search (IVF/HNSW).
+
+**1. In-memory index dict across multiple workers**
+Currently using `uvicorn --workers 4` means each worker has its own `self._indexes` dict. A PDF uploaded via worker 1 is invisible to workers 2, 3, 4. Should probably use a shared vector store (Qdrant, Weaviate) or Redis-backed index registry.
+
+**2. Synchronous indexing blocks the upload request**
+Large PDFs hold the HTTP connection open for 10–30s. I am thinking of implementing job queue like Celery and redis to handle the job inorder to be reponsive.
+
+**3. FAISS flat index at scale**
+Currently it uses `IndexFlatIP` which does exact search in O(n). But for a very high volume of PDFs, we must switch to approximate search (`IndexIVFFlat` which uses clustering and reduces the search space or `IndexHNSWFlat` which is a graph based searching) for sub-linear query time.
+
+**4. No authentication**
+Any client can upload arbitrary PDFs or flood the query endpoint. I can think of some sort of Authentication, maybe Google OAuth to make things simple, rate limiting, validation of content being uploaded.
 
 ### Where are the bottlenecks?
-| Step | Time | Notes |
-|------|------|-------|
-| PDF text extraction (fitz) | ~50ms/page | Already optimal — fitz is C-based |
-| Text cleaning | ~1ms/page | Negligible |
-| Embedding generation | ~2–5s total | Bottleneck — batching helps, GPU would give 10–20× speedup |
-| FAISS index build | ~100ms | Negligible for prototypes |
-| Query embedding | ~5ms | Constant regardless of index size |
-| FAISS similarity search | ~1ms | Constant for flat index |
 
+|Embedding generation is the bottleneck during indexing. Every upload blocks until all chunks are embedded on CPU. Fix: GPU inference or async background task queue (Celery/ARQ).|
+|Cross-encoder reranking dominates query latency at ~185ms avg. Three ways to reduce it: switch to the smaller ms-marco-MiniLM-L-2-v2 (~60ms), reduce CANDIDATE_K from 20 to 10, or run on GPU for ~10× speedup.|
+|In-memory Python dict for index storage is the most critical production limitation. All FAISS indexes live in self._indexes: Dict[str, FAISS] — a plain Python dict in the server process. This means indexes are not shared across multiple workers (uvicorn --workers 4 would break query routing), RAM grows unbounded as more PDFs are uploaded, and there is no eviction policy. Fix: migrate to a dedicated vector database (Qdrant, Weaviate, Pinecone) which handles persistence, multi-worker access, and memory management natively.|
+|FAISS flat index (IndexFlatIP) does exact exhaustive search — correct but O(n) at query time. Acceptable up to ~500k vectors. Beyond that, approximate search indexes (IndexIVFFlat, IndexHNSWFlat) give sub-linear query time with minimal accuracy loss.|
 ---
 
 ## Configuration
 
-All tunables are in `app/config.py`:
+All tunables in `app/config.py`:
 
 | Setting | Default | Effect |
-|---------|---------|--------|
-| `EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Swap to all-mpnet-base-v2 for better accuracy at 2× slower speed |
-| `CHUNK_SIZE` | 200 chars | Smaller = more focused results; larger = more context |
-| `CHUNK_OVERLAP` | 30 chars | Prevents cutting answers across chunk boundaries |
-| `DEFAULT_TOP_K` | 3 | Results per query |
+|---|---|---|
+| `EMBEDDING_MODEL` | all-MiniLM-L6-v2|
+| `RERANKER_MODEL` | ms-marco-MiniLM-L-6-v2|
+| `CHUNK_SIZE` | 400 chars | Larger = more context per chunk, fewer boundary cuts |
+| `CHUNK_OVERLAP` | 60 chars | Prevents splitting sentences across chunk boundaries |
+| `CANDIDATE_K` | 20 | Stage 1 fetch size. Higher = better recall, slower reranking |
+| `SCORE_THRESHOLD` | 0.3 | Min cosine similarity to pass Stage 1. Raise for stricter filtering |
+| `DEFAULT_TOP_K` | 5 | Results returned per query |
 | `MAX_FILE_SIZE_MB` | 50 | Upload size limit |
+
+---
+
+## Running the Evaluation
+
+```bash
+
+# Upload PDFs and run evaluation
+python eval.py --upload
+
+# Run evaluation only (PDFs already indexed)
+python eval.py
+
+# Verbose mode — shows retrieved chunks per question
+python eval.py --verbose
+```
+
+Results are saved to `eval_results.json`.
+
+---
+
+## Challenges Addressed
+
+**Handling large PDFs**
+As page count grows, indexing time scales linearly, each page must be extracted, cleaned, chunked, and embedded. On CPU, this means a 50-page document takes approximately 25–30 seconds to index.
+
+Beyond indexing time, large PDFs introduce memory pressure since all chunk vectors must fit in RAM alongside the FAISS index. A 100-page document generates roughly 1,000 chunks at 400-char size, adding about 6MB to the in-memory index — manageable individually but cumulative across many uploads. So the current practical limit for this prototype is 50 pages per document, beyond which a chunked upload strategy or dedicated vector database with disk-backed storage would be more appropriate.
+
+**Balancing chunk size for accuracy and speed**
+Initial chunk size of 200 chars caused fragmentation — specific facts like "Carpet area: 5789 sq. ft." were split across chunks, degrading retrieval. Increasing to 400 chars with 60-char overlap kept related sentences together and improved Top-1 accuracy significantly.
+
+**Retrieval precision — semantic mismatch**
+Pure bi-encoder retrieval returned semantically similar but factually wrong chunks (e.g., commercial property descriptions for residential bedroom queries). Solved by switching from L2 to cosine similarity (IndexFlatIP) and adding cross-encoder reranking, which reads query and chunk together to understand intent.
+
+**Duplicate chunks**
+Real estate brochures repeat layout elements across consecutive pages. Added content-hash deduplication before reranking to prevent the same text appearing multiple times in results.
+
+### Things that i would wish to include in this
+**LLM Response Generation**
+The current system returns raw retrieved chunks — the user has to read and interpret them manually. The natural next step is adding an LLM generation layer on top of retrieval:
+
+This converts the system from a **search engine** into a true **document Q&A assistant**. The retrieval pipeline stays identical, the LLM only sees the top-K chunks as context, not the entire document. This keeps latency low and prevents hallucination by grounding every answer in retrieved evidence.

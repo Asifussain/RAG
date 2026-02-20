@@ -1,0 +1,330 @@
+{
+  "summary": {
+    "top1_accuracy": 75.0,
+    "top3_accuracy": 95.0,
+    "top1_hits": 15,
+    "top3_hits": 19,
+    "total_questions": 20,
+    "latency": {
+      "avg_ms": 224.3,
+      "p95_ms": 252.9,
+      "p99_ms": 257.0,
+      "min_ms": 140.8,
+      "max_ms": 258.1,
+      "avg_stage1_ms": 8.2,
+      "avg_stage2_ms": 216.2
+    }
+  },
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "What is the carpet area of Sky Villa 1 compared to Sky Villa 2 in Estate 128?",
+      "keywords": [
+        "5789",
+        "6827",
+        "537",
+        "634"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 232.79,
+      "top_result": "TOWER 1\nTOWER 2\nTOWER 3\nTOWER 1\nTOWER 2\nTOWER 3\nTOWER 1\nTOWER 2\nTOWER 3\nSky Villa 1\nLevel 1\nCarpet area: 5789 sq. ft./ 5"
+    },
+    {
+      "id": "Q02",
+      "question": "Does the Estate 128 triplex include a private swimming pool and a dedicated gym?",
+      "keywords": [
+        "swimming pool",
+        "gym",
+        "private pool",
+        "exclusive gym"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 228.94,
+      "top_result": "The Estate 128 Sky Villas are designed to embody our value of generosity. Our triplex penthouse residences\ncome equipped"
+    },
+    {
+      "id": "Q03",
+      "question": "Are there separate entrances for guest rooms and bedrooms in the Estate 128 Sky Villas?",
+      "keywords": [
+        "separate entrance",
+        "guest room",
+        "privacy"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 220.95,
+      "top_result": "while separate entrances for bedrooms and guest rooms ensure added privacy. With an indoor-cum-outdoor\nliving room and a"
+    },
+    {
+      "id": "Q04",
+      "question": "Describe the architectural features of the double-height living room in the Sky Villas.",
+      "keywords": [
+        "double height",
+        "double heighted",
+        "living room",
+        "wraparound"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 231.56,
+      "top_result": "while separate entrances for bedrooms and guest rooms ensure added privacy. With an indoor-cum-outdoor\nliving room and a"
+    },
+    {
+      "id": "Q05",
+      "question": "How wide are the wraparound balconies at Estate 128?",
+      "keywords": [
+        "12",
+        "13",
+        "feet",
+        "wide",
+        "wraparound"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 201.39,
+      "top_result": "4.\nPersonalised storage with indoor utility space\n5.\nPrivate bar area\n6.\nExclusive family and entertainment lounge\n7.\nDe"
+    },
+    {
+      "id": "Q06",
+      "question": "Is Estate 128 a RERA registered project and what is its registration number?",
+      "keywords": [
+        "rera",
+        "registration",
+        "upreraprj"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 244.42,
+      "top_result": "to any third party without the express written consent of Max Estates 128 Pvt. Ltd. The Project Estate 128 is registered"
+    },
+    {
+      "id": "Q07",
+      "question": "Is there a provision for private elevators in the Sky Villas of Estate 128?",
+      "keywords": [
+        "elevator",
+        "lift",
+        "private elevator",
+        "private lift"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": false,
+      "top3": true,
+      "latency_ms": 219.05,
+      "top_result": "The Estate 128 Sky Villas are designed to embody our value of generosity. Our triplex penthouse residences\ncome equipped"
+    },
+    {
+      "id": "Q08",
+      "question": "What kind of air conditioning system is used in Estate 128?",
+      "keywords": [
+        "air conditioning",
+        "ac",
+        "vrf",
+        "vrv",
+        "central air",
+        "ducted"
+      ],
+      "source_hint": "E128-Skyvilla-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 216.78,
+      "top_result": "Located in Sector 128, Noida, Estate 128 is\ndesigned with the utmost attention to detail,\nevident in its contemporary ar"
+    },
+    {
+      "id": "Q09",
+      "question": "What is the total built-up area and carpet area of a Townhouse in 222 Rajpur?",
+      "keywords": [
+        "built-up",
+        "carpet area",
+        "townhouse",
+        "sq. ft",
+        "sq ft"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": false,
+      "top3": true,
+      "latency_ms": 251.43,
+      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+    },
+    {
+      "id": "Q10",
+      "question": "How many units are available for Courtyard Villas versus Forest Villas in the Dehradun project?",
+      "keywords": [
+        "courtyard",
+        "forest villa",
+        "units",
+        "number"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 238.14,
+      "top_result": "Landscaped terrace\nCOURTYARD VILLAS\nUnits 5\nPlot size range 364-565 sq.m.\nBuilt up area 4197 sq.ft.\nCarpet area 3276 sq."
+    },
+    {
+      "id": "Q11",
+      "question": "What is the range of plot sizes for the Townhouses in 222 Rajpur?",
+      "keywords": [
+        "plot",
+        "sq. ft",
+        "sq ft",
+        "townhouse",
+        "range"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 215.17,
+      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+    },
+    {
+      "id": "Q12",
+      "question": "What are the key features of the Forest Villas in 222 Rajpur regarding their connection to the landscape?",
+      "keywords": [
+        "forest",
+        "landscape",
+        "nature",
+        "trees",
+        "botanical",
+        "green"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 258.06,
+      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+    },
+    {
+      "id": "Q13",
+      "question": "Do the townhouses in 222 Rajpur feature a sky court or atrium for natural light?",
+      "keywords": [
+        "sky court",
+        "atrium",
+        "natural light",
+        "skylight"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": false,
+      "top3": true,
+      "latency_ms": 248.29,
+      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+    },
+    {
+      "id": "Q14",
+      "question": "How are public service areas like kitchens and staff rooms separated from private spaces in 222 Rajpur?",
+      "keywords": [
+        "kitchen",
+        "staff",
+        "service",
+        "private",
+        "separated",
+        "separation"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": false,
+      "top3": false,
+      "latency_ms": 248.99,
+      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+    },
+    {
+      "id": "Q15",
+      "question": "Is there a provision for private elevators in the Forest Villas of Dehradun?",
+      "keywords": [
+        "elevator",
+        "lift",
+        "private"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 219.74,
+      "top_result": "The Forest Villas are designed as an immersion into landscape.\nOpening up to the brilliant views of the Malsi forest and"
+    },
+    {
+      "id": "Q16",
+      "question": "What unique botanical feature is reserved exclusively for residents at 222 Rajpur?",
+      "keywords": [
+        "botanical",
+        "orchard",
+        "garden",
+        "exclusive",
+        "resident"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 238.97,
+      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+    },
+    {
+      "id": "Q17",
+      "question": "What are the primary natural views offered to residents of 222 Rajpur?",
+      "keywords": [
+        "view",
+        "mountain",
+        "himalaya",
+        "valley",
+        "forest",
+        "nature"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 232.45,
+      "top_result": "School, Dehradun offers a tranquil retreat from the\nintensity of Indian cities. Nestled in the natural embrace\nof the Ma"
+    },
+    {
+      "id": "Q18",
+      "question": "What is the UKRERA registration number for the 222 Rajpur project in Dehradun?",
+      "keywords": [
+        "ukrera",
+        "registration",
+        "rera"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 252.61,
+      "top_result": "222 Rajpur Road\nDehradun 248009\nT 8899118222\nE sales@maxestates.in\nwww.222rajpur.co.in\nCorporate office\nMax Towers, L-15"
+    },
+    {
+      "id": "Q19",
+      "question": "To which Seismic Zone does the structural design of 222 Rajpur adhere?",
+      "keywords": [
+        "seismic",
+        "zone",
+        "zone iv",
+        "zone 4"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": false,
+      "top3": true,
+      "latency_ms": 140.81,
+      "top_result": "advantage of the natural beauty of the site, the architecture\nat 222 Rajpur encompasses both indoor and outdoor living.\n"
+    },
+    {
+      "id": "Q20",
+      "question": "What specific security measures are implemented for resident car recognition at the Dehradun site and how long does it take to drive to Jolly Grant Airport?",
+      "keywords": [
+        "car recognition",
+        "rfid",
+        "number plate",
+        "jolly grant",
+        "airport",
+        "minutes"
+      ],
+      "source_hint": "222-Rajpur-Document.pdf",
+      "top1": true,
+      "top3": true,
+      "latency_ms": 146.44,
+      "top_result": "By Air: With over twelve daily flights from Delhi, Dehradun is\nperfectly accessible. A short drive to the Jolly Grant ai"
+    }
+  ]
+}

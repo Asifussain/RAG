@@ -1,30 +1,58 @@
 """
-pipeline.py — PDF RAG Pipeline (server-ready refactor).
+pipeline.py — PDF RAG Pipeline with Two-Stage Retrieval.
 
-Key differences from the original script:
-- Embedding model loaded ONCE at startup (not per request) → no cold-start penalty
-- Each uploaded PDF gets its own FAISS index keyed by index_id (UUID)
-- Indexes can be persisted to disk and reloaded across restarts
-- Returns structured dataclasses rather than printing to stdout
+Two-stage retrieval strategy:
+  Stage 1 — Bi-encoder (FAISS):
+    Fast approximate search. Embeds query + chunks independently.
+    Retrieves CANDIDATE_K candidates (e.g. 20) quickly via cosine similarity.
+    Good at recall, not always perfect at ranking.
+
+  Stage 2 — Cross-encoder (reranker):
+    Reads (query, chunk) TOGETHER — understands full context and intent.
+    Re-scores all candidates and returns the true top_k.
+    Slower per-pair but only runs on ~20 candidates, not the full index.
+    Dramatically improves precision — especially for specific factual queries
+    like "carpet area of Sky Villa 1" where the bi-encoder may rank
+    descriptive text above the actual number.
+
+Latency breakdown (CPU):
+  Stage 1:  ~5–10ms   (FAISS vector search)
+  Stage 2:  ~80–200ms (cross-encoder on 20 pairs)
+  Total:    ~100–250ms — well within 2s target
+
+Other fixes:
+  - IndexFlatIP (inner product) + normalized embeddings = cosine similarity
+  - Score threshold to suppress irrelevant results
+  - Chunk size 400 chars for better semantic context per chunk
 """
 
 import re
 import time
 import uuid
+import json
+from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Dict
+from dataclasses import dataclass, field
+from typing import List, Dict, Tuple
 
+import faiss
+import numpy as np
 import fitz  # PyMuPDF
 from langchain.schema import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
+from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import CrossEncoder
 
 from app.config import (
-    EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP,
-    DEFAULT_TOP_K, MAX_TOP_K, INDEX_DIR
+    EMBEDDING_MODEL, RERANKER_MODEL,
+    CHUNK_SIZE, CHUNK_OVERLAP,
+    DEFAULT_TOP_K, MAX_TOP_K, CANDIDATE_K,
+    INDEX_DIR, SCORE_THRESHOLD,
 )
+
+MASTER_INDEX_ID = "master"
 
 
 # ─────────────────────────────────────────────
@@ -38,16 +66,12 @@ class SearchResult:
     page_number: int
     total_pages: int
     chunk_index: int
-    score: float
+    score: float                        # bi-encoder cosine similarity score
+    rerank_score: float = field(default=None)  # cross-encoder relevance score
 
 
 # ─────────────────────────────────────────────
 # TEXT CLEANING
-# Real estate PDFs are notorious for:
-#   - OCR garbage (????, ####, ©, weird unicode)
-#   - Table artifacts (||||, -----)
-#   - Header/footer noise (page numbers, watermarks)
-#   - Ligature issues (ﬁ, ﬂ instead of fi, fl)
 # ─────────────────────────────────────────────
 
 def clean_text(text: str) -> str:
@@ -76,7 +100,7 @@ def clean_text(text: str) -> str:
 # PDF LOADER
 # ─────────────────────────────────────────────
 
-def load_pdf(pdf_path: str) -> List[Document]:
+def load_pdf(pdf_path: str) -> Tuple[List[Document], int]:
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -108,47 +132,133 @@ def load_pdf(pdf_path: str) -> List[Document]:
 
 
 # ─────────────────────────────────────────────
-# PIPELINE — singleton shared across requests
+# FAISS INDEX FACTORY — Inner Product (cosine)
+# ─────────────────────────────────────────────
+
+def make_faiss_index(chunks: List[Document], embeddings: HuggingFaceEmbeddings) -> FAISS:
+    """
+    Build FAISS index using IndexFlatIP (inner product).
+    Since embeddings are L2-normalized, IP = cosine similarity.
+    Scores are in [0, 1] where higher = more similar.
+    """
+    texts     = [c.page_content for c in chunks]
+    metadatas = [c.metadata for c in chunks]
+
+    vectors = np.array(embeddings.embed_documents(texts), dtype=np.float32)
+    dim = vectors.shape[1]
+
+    index = faiss.IndexFlatIP(dim)
+    index.add(vectors)
+
+    docstore_dict = {}
+    index_to_id   = {}
+    for i, (text, meta) in enumerate(zip(texts, metadatas)):
+        doc_id = str(uuid.uuid4())
+        index_to_id[i]      = doc_id
+        docstore_dict[doc_id] = Document(page_content=text, metadata=meta)
+
+    return FAISS(
+        embedding_function=embeddings,
+        index=index,
+        docstore=InMemoryDocstore(docstore_dict),
+        index_to_docstore_id=index_to_id,
+    )
+
+
+# ─────────────────────────────────────────────
+# PIPELINE
 # ─────────────────────────────────────────────
 
 class RAGPipeline:
     """
-    Singleton-style pipeline.
-    - Embedding model is loaded once at app startup.
-    - Each uploaded PDF creates a separate FAISS index stored in self._indexes.
-    - Indexes are optionally persisted to disk for restart survival.
+    Two-stage retrieval pipeline.
 
-    Scalability notes:
-    - In-memory dict works fine for a prototype / single-server deployment.
-    - For multi-worker production: replace with a shared index store
-      (e.g., Redis + serialized FAISS, or a dedicated vector DB like Qdrant/Weaviate).
-    - PyMuPDF (fitz) is C-based — much faster extraction than pdfminer/pypdf.
-    - Cleaning happens before chunking so dirty tokens don't pollute embeddings.
+    Stage 1 — FAISS bi-encoder: fast, fetches CANDIDATE_K candidates.
+    Stage 2 — CrossEncoder reranker: precise, re-scores candidates and
+              returns the true top_k in correct relevance order.
+
+    Both models load once at startup — zero per-request model loading cost.
     """
 
     def __init__(self):
+        # Stage 1: bi-encoder for embedding + FAISS search
         self._embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL,
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
+
+        # Stage 2: cross-encoder for reranking candidates
+        # ms-marco-MiniLM-L-6-v2 is trained on MS MARCO passage ranking —
+        # excellent at understanding query-document relevance for factual Q&A
+        print(f"Loading reranker: {RERANKER_MODEL} ...")
+        self._reranker = CrossEncoder(
+            RERANKER_MODEL,
+            max_length=512,     # truncate long chunks safely
+            device="cpu",
+        )
+        print("Reranker loaded.\n")
+
         self._splitter = RecursiveCharacterTextSplitter(
             chunk_size=CHUNK_SIZE,
             chunk_overlap=CHUNK_OVERLAP,
             separators=["\n\n", "\n", ". ", " ", ""],
         )
-        # index_id → FAISS vectorstore
-        self._indexes: Dict[str, FAISS] = {}
 
-    # ── Index management ──────────────────────────────────────────────────
+        self._indexes: Dict[str, FAISS] = {}
+        self._load_master()
+
+    # ── Master index ──────────────────────────────────────────────────────
+
+    def _load_master(self):
+        master_path = INDEX_DIR / MASTER_INDEX_ID
+        if master_path.exists():
+            self._indexes[MASTER_INDEX_ID] = FAISS.load_local(
+                str(master_path),
+                self._embeddings,
+                allow_dangerous_deserialization=True,
+            )
+
+    # ── Registry — stores filename metadata per index_id ─────────────────
+    # Persisted as indexes/registry.json so filenames survive restarts.
+
+    def _registry_path(self):
+        return INDEX_DIR / "registry.json"
+
+    def _load_registry(self) -> dict:
+        p = self._registry_path()
+        if p.exists():
+            return json.loads(p.read_text())
+        return {}
+
+    def _save_registry_entry(self, index_id: str, entry: dict):
+        registry = self._load_registry()
+        registry[index_id] = entry
+        self._registry_path().write_text(json.dumps(registry, indent=2))
+
+    def get_registry(self) -> dict:
+        return self._load_registry()
+
+    def _save_master(self):
+        if MASTER_INDEX_ID in self._indexes:
+            self._indexes[MASTER_INDEX_ID].save_local(
+                str(INDEX_DIR / MASTER_INDEX_ID)
+            )
+
+    def _update_master(self, new_vectorstore: FAISS):
+        if MASTER_INDEX_ID not in self._indexes:
+            self._indexes[MASTER_INDEX_ID] = new_vectorstore
+        else:
+            self._indexes[MASTER_INDEX_ID].merge_from(new_vectorstore)
+        self._save_master()
+
+    def has_master(self) -> bool:
+        return MASTER_INDEX_ID in self._indexes
+
+    # ── Per-document indexing ─────────────────────────────────────────────
 
     def index_pdf(self, pdf_path: str) -> dict:
-        """
-        Load, clean, chunk, and index a single PDF.
-        Returns index metadata: index_id, filename, total_pages, total_chunks.
-        """
         pages, total_pages = load_pdf(pdf_path)
-
         if not pages:
             raise ValueError("No extractable text found in this PDF.")
 
@@ -156,80 +266,78 @@ class RAGPipeline:
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
 
+        vectorstore = make_faiss_index(chunks, self._embeddings)
+
         index_id = str(uuid.uuid4())
-        vectorstore = FAISS.from_documents(chunks, self._embeddings)
         self._indexes[index_id] = vectorstore
+        vectorstore.save_local(str(INDEX_DIR / index_id))
+        self._update_master(vectorstore)
 
-        # Persist to disk so we can reload on restart
-        save_path = INDEX_DIR / index_id
-        vectorstore.save_local(str(save_path))
-
-        return {
-            "index_id": index_id,
-            "filename": Path(pdf_path).name,
-            "total_pages": total_pages,
+        result = {
+            "index_id":     index_id,
+            "filename":     Path(pdf_path).name,
+            "total_pages":  total_pages,
             "total_chunks": len(chunks),
         }
+        self._save_registry_entry(index_id, {
+            "filename":     result["filename"],
+            "total_pages":  total_pages,
+            "total_chunks": len(chunks),
+            "uploaded_at":  datetime.utcnow().isoformat(),
+            "type":         "document",
+        })
+        return result
 
     def index_collection(self, pdf_paths: List[str]) -> dict:
-        """
-        Merge multiple PDFs into a single FAISS index (collection).
-        All PDFs are searchable together — results include which file/page matched.
-
-        Why merge instead of querying each index separately:
-        - Single embedding lookup vs. N lookups
-        - Results are globally ranked by similarity across all docs
-        - Simpler API — one collection_id covers everything
-
-        Tradeoff: you can't remove a single PDF later without rebuilding the index.
-        For a prototype this is fine.
-        """
-        all_chunks = []
+        all_chunks     = []
         file_summaries = []
-        global_chunk_idx = 0
+        global_idx     = 0
 
         for pdf_path in pdf_paths:
             try:
                 pages, total_pages = load_pdf(pdf_path)
                 if not pages:
                     continue
-
                 chunks = self._splitter.split_documents(pages)
                 for chunk in chunks:
-                    chunk.metadata["chunk_index"] = global_chunk_idx
-                    global_chunk_idx += 1
-
+                    chunk.metadata["chunk_index"] = global_idx
+                    global_idx += 1
                 all_chunks.extend(chunks)
                 file_summaries.append({
-                    "filename": Path(pdf_path).name,
+                    "filename":    Path(pdf_path).name,
                     "total_pages": total_pages,
-                    "chunks": len(chunks),
+                    "chunks":      len(chunks),
                 })
             except Exception as e:
-                # Skip bad PDFs, don't fail the whole collection
-                file_summaries.append({
-                    "filename": Path(pdf_path).name,
-                    "error": str(e),
-                })
+                file_summaries.append({"filename": Path(pdf_path).name, "error": str(e)})
 
         if not all_chunks:
             raise ValueError("No extractable text found across all uploaded PDFs.")
 
+        vectorstore   = make_faiss_index(all_chunks, self._embeddings)
         collection_id = str(uuid.uuid4())
-        vectorstore = FAISS.from_documents(all_chunks, self._embeddings)
         self._indexes[collection_id] = vectorstore
+        vectorstore.save_local(str(INDEX_DIR / collection_id))
+        self._update_master(vectorstore)
 
-        save_path = INDEX_DIR / collection_id
-        vectorstore.save_local(str(save_path))
+        self._save_registry_entry(collection_id, {
+            "filename":     ", ".join(f["filename"] for f in file_summaries if "error" not in f),
+            "total_pages":  sum(f.get("total_pages", 0) for f in file_summaries if "error" not in f),
+            "total_chunks": len(all_chunks),
+            "uploaded_at":  datetime.utcnow().isoformat(),
+            "type":         "collection",
+            "files":        file_summaries,
+        })
 
         return {
             "collection_id": collection_id,
-            "files": file_summaries,
-            "total_chunks": len(all_chunks),
+            "files":         file_summaries,
+            "total_chunks":  len(all_chunks),
         }
 
+    # ── Index loading ─────────────────────────────────────────────────────
+
     def load_index(self, index_id: str) -> bool:
-        """Load a previously saved index from disk into memory."""
         save_path = INDEX_DIR / index_id
         if not save_path.exists():
             return False
@@ -242,39 +350,53 @@ class RAGPipeline:
         return True
 
     def has_index(self, index_id: str) -> bool:
-        if index_id in self._indexes:
-            return True
-        # Try loading from disk (handles server restarts)
-        return self.load_index(index_id)
+        return index_id in self._indexes or self.load_index(index_id)
 
     def active_index_count(self) -> int:
         return len(self._indexes)
 
-    # ── Query ──────────────────────────────────────────────────────────────
+    # ── Two-stage search ──────────────────────────────────────────────────
 
-    def query(self, index_id: str, question: str, top_k: int = DEFAULT_TOP_K) -> tuple:
+    def _run_search(self, vectorstore: FAISS, question: str, top_k: int) -> Tuple[List[SearchResult], float, float]:
         """
-        Semantic search against a specific index.
-        Returns (List[SearchResult], latency_ms).
+        Stage 1: Fetch CANDIDATE_K candidates via FAISS cosine search.
+        Stage 2: Rerank with CrossEncoder, return true top_k.
+
+        Returns (results, stage1_latency_ms, stage2_latency_ms).
         """
-        if not self.has_index(index_id):
-            raise KeyError(f"Index '{index_id}' not found.")
+        top_k      = min(top_k, MAX_TOP_K)
+        candidate_k = max(CANDIDATE_K, top_k)  # always fetch at least top_k
 
-        top_k = min(top_k, MAX_TOP_K)
-        vectorstore = self._indexes[index_id]
-
+        # ── Stage 1: FAISS bi-encoder search ──────────────────────────────
         t0 = time.perf_counter()
-        raw_results = vectorstore.similarity_search_with_score(question, k=top_k)
-        latency_ms = (time.perf_counter() - t0) * 1000
+        raw_results = vectorstore.similarity_search_with_score(question, k=candidate_k)
+        stage1_ms = (time.perf_counter() - t0) * 1000
 
-        # Deduplicate — same text can appear on consecutive pages (repeated layouts)
-        seen = set()
-        deduped = []
+        # Dedup by content hash
+        seen, candidates = set(), []
         for doc, score in raw_results:
             h = hash(doc.page_content.strip())
-            if h not in seen:
+            if h not in seen and score >= SCORE_THRESHOLD:
                 seen.add(h)
-                deduped.append((doc, score))
+                candidates.append((doc, score))
+
+        if not candidates:
+            return [], stage1_ms, 0.0
+
+        # ── Stage 2: Cross-encoder reranking ──────────────────────────────
+        # Feed (query, chunk_text) pairs — cross-encoder reads both together
+        # and produces a relevance score that understands intent vs. content
+        t1 = time.perf_counter()
+        pairs         = [(question, doc.page_content) for doc, _ in candidates]
+        rerank_scores = self._reranker.predict(pairs)   # returns raw logits (higher = more relevant)
+        stage2_ms     = (time.perf_counter() - t1) * 1000
+
+        # Sort by rerank score descending, take top_k
+        reranked = sorted(
+            zip(candidates, rerank_scores),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:top_k]
 
         results = [
             SearchResult(
@@ -283,13 +405,24 @@ class RAGPipeline:
                 page_number=doc.metadata.get("page_number", -1),
                 total_pages=doc.metadata.get("total_pages", -1),
                 chunk_index=doc.metadata.get("chunk_index", -1),
-                score=round(float(score), 4),
+                score=round(float(bi_score), 4),
+                rerank_score=round(float(rerank_score), 4),
             )
-            for doc, score in deduped
+            for (doc, bi_score), rerank_score in reranked
         ]
-        return results, latency_ms
+
+        return results, stage1_ms, stage2_ms
+
+    def query(self, index_id: str, question: str, top_k: int = DEFAULT_TOP_K):
+        if not self.has_index(index_id):
+            raise KeyError(f"Index '{index_id}' not found.")
+        return self._run_search(self._indexes[index_id], question, top_k)
+
+    def query_all(self, question: str, top_k: int = DEFAULT_TOP_K):
+        if not self.has_master():
+            raise RuntimeError("No documents uploaded yet.")
+        return self._run_search(self._indexes[MASTER_INDEX_ID], question, top_k)
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────
-# FastAPI imports this; the model loads once when the process starts.
 rag_pipeline = RAGPipeline()
