@@ -135,6 +135,7 @@ Evaluated against 20 questions spanning two real estate PDFs:
 ### What happens as PDFs grow larger?
 
 | Component | Behavior |
+|-----------|----------|
 | Indexing time | Scales linearly ~0.5s per page on CPU |
 | Query latency | Stays constant — FAISS search is O(n) but fast up to ~500k chunks |
 | RAM usage | ~1.5KB per chunk (384-dim float32). 200-page PDF ≈ 3MB. Not a concern until thousands of PDFs |
