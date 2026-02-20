@@ -106,7 +106,7 @@ Evaluated against 20 questions spanning two real estate PDFs:
 #### Evaluation Set
 
 | ID | Question |
-|---|---|:---:|:---:|
+|---|---|
 | Q01 | Carpet area of Sky Villa 1 vs Sky Villa 2 
 | Q02 | Does Estate 128 triplex include pool and gym? 
 | Q03 | Separate entrances for guest rooms in Estate 128? 
@@ -156,24 +156,29 @@ Any client can upload arbitrary PDFs or flood the query endpoint. I can think of
 
 ### Where are the bottlenecks?
 
-|Embedding generation is the bottleneck during indexing. Every upload blocks until all chunks are embedded on CPU. Fix: GPU inference or async background task queue (Celery/ARQ).|
-|Cross-encoder reranking dominates query latency at ~185ms avg. Three ways to reduce it: switch to the smaller ms-marco-MiniLM-L-2-v2 (~60ms), reduce CANDIDATE_K from 20 to 10, or run on GPU for ~10× speedup.|
-|In-memory Python dict for index storage is the most critical production limitation. All FAISS indexes live in self._indexes: Dict[str, FAISS] — a plain Python dict in the server process. This means indexes are not shared across multiple workers (uvicorn --workers 4 would break query routing), RAM grows unbounded as more PDFs are uploaded, and there is no eviction policy. Fix: migrate to a dedicated vector database (Qdrant, Weaviate, Pinecone) which handles persistence, multi-worker access, and memory management natively.|
-|FAISS flat index (IndexFlatIP) does exact exhaustive search — correct but O(n) at query time. Acceptable up to ~500k vectors. Beyond that, approximate search indexes (IndexIVFFlat, IndexHNSWFlat) give sub-linear query time with minimal accuracy loss.|
+Setting,Default,Effect
+EMBEDDING_MODEL,all-MiniLM-L6-v2,Bi-encoder model used for Stage 1 semantic retrieval and vector generation.
+RERANKER_MODEL,ms-marco-MiniLM-L-6-v2,Cross-encoder model used for Stage 2 high-precision reranking of candidates.
+CHUNK_SIZE,400 characters,Controls the granularity of data; larger chunks provide more context but can dilute specific facts.
+CHUNK_OVERLAP,60 characters,Ensures semantic continuity by sharing text between adjacent chunks to prevent sentence clipping.
+CANDIDATE_K,20,The number of  chunks fetched by FAISS for Stage 2; higher values improve recall but increase reranking latency.
+SCORE_THRESHOLD,0.3,The minimum cosine similarity required for a chunk to be considered; higher values ensure stricter relevance.
+DEFAULT_TOP_K,5,The final number of reranked results presented to the user.
+MAX_FILE_SIZE_MB,50,Maximum allowed size for PDF uploads to protect server memory and storage limits.
 ---
 
 ## Configuration
 
 All tunables in `app/config.py`:
 
-| Setting | Default | Effect |
+| Setting | Default | Why? |
 |---|---|---|
-| `EMBEDDING_MODEL` | all-MiniLM-L6-v2|
-| `RERANKER_MODEL` | ms-marco-MiniLM-L-6-v2|
-| `CHUNK_SIZE` | 400 chars | Larger = more context per chunk, fewer boundary cuts |
+| `EMBEDDING_MODEL` | all-MiniLM-L6-v2| I chose this for its lightweight architecture |
+| `RERANKER_MODEL` | ms-marco-MiniLM-L-6-v2| I chose to get high-precision in reranking |
+| `CHUNK_SIZE` | 400 chars | Tuned this, it mostly remained intact within a single searchable vector |
 | `CHUNK_OVERLAP` | 60 chars | Prevents splitting sentences across chunk boundaries |
-| `CANDIDATE_K` | 20 | Stage 1 fetch size. Higher = better recall, slower reranking |
-| `SCORE_THRESHOLD` | 0.3 | Min cosine similarity to pass Stage 1. Raise for stricter filtering |
+| `CANDIDATE_K` | 20 | Stage 1 fetch size|
+| `SCORE_THRESHOLD` | 0.3 | Min cosine similarity to pass Stage 1. Below this were irrelevant responses|
 | `DEFAULT_TOP_K` | 5 | Results returned per query |
 | `MAX_FILE_SIZE_MB` | 50 | Upload size limit |
 
@@ -213,8 +218,12 @@ Pure bi-encoder retrieval returned semantically similar but factually wrong chun
 **Duplicate chunks**
 Real estate brochures repeat layout elements across consecutive pages. Added content-hash deduplication before reranking to prevent the same text appearing multiple times in results.
 
-### Things that i would wish to include in this
+---
+
+### Things to include
 **LLM Response Generation**
 The current system returns raw retrieved chunks — the user has to read and interpret them manually. The natural next step is adding an LLM generation layer on top of retrieval:
 
 This converts the system from a **search engine** into a true **document Q&A assistant**. The retrieval pipeline stays identical, the LLM only sees the top-K chunks as context, not the entire document. This keeps latency low and prevents hallucination by grounding every answer in retrieved evidence.
+
+---
