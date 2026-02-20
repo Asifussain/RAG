@@ -156,15 +156,12 @@ Any client can upload arbitrary PDFs or flood the query endpoint. I can think of
 
 ### Where are the bottlenecks?
 
-Setting,Default,Effect
-EMBEDDING_MODEL,all-MiniLM-L6-v2,Bi-encoder model used for Stage 1 semantic retrieval and vector generation.
-RERANKER_MODEL,ms-marco-MiniLM-L-6-v2,Cross-encoder model used for Stage 2 high-precision reranking of candidates.
-CHUNK_SIZE,400 characters,Controls the granularity of data; larger chunks provide more context but can dilute specific facts.
-CHUNK_OVERLAP,60 characters,Ensures semantic continuity by sharing text between adjacent chunks to prevent sentence clipping.
-CANDIDATE_K,20,The number of  chunks fetched by FAISS for Stage 2; higher values improve recall but increase reranking latency.
-SCORE_THRESHOLD,0.3,The minimum cosine similarity required for a chunk to be considered; higher values ensure stricter relevance.
-DEFAULT_TOP_K,5,The final number of reranked results presented to the user.
-MAX_FILE_SIZE_MB,50,Maximum allowed size for PDF uploads to protect server memory and storage limits.
+| Component / Issue | Description |
+|-------------------|-------------|
+| Embedding Generation Bottleneck | Embedding generation is the bottleneck during indexing. Every upload blocks until all chunks are embedded on CPU. **Fix:** Use GPU inference or an async background task queue (Celery/ARQ). |
+| Cross-Encoder Latency | Cross-encoder reranking dominates query latency (~185ms avg). **Optimizations:** Switch to smaller `ms-marco-MiniLM-L-2-v2` (~60ms), reduce `CANDIDATE_K` from 20 to 10, or run inference on GPU for ~10× speedup. |
+| In-Memory Index Storage Limitation | FAISS indexes are stored in `self._indexes: Dict[str, FAISS]` (in-memory Python dict). This prevents multi-worker sharing (e.g., `uvicorn --workers 4` breaks routing), causes unbounded RAM growth as PDFs increase, and lacks eviction policies. **Fix:** Migrate to a dedicated vector database (Qdrant, Weaviate, Pinecone) for persistence, multi-worker access, and memory management. |
+| FAISS Flat Index Scalability | FAISS `IndexFlatIP` performs exact exhaustive search (O(n) query time). Works well up to ~500k vectors. Beyond that, use approximate indexes (`IndexIVFFlat`, `IndexHNSWFlat`) for sub-linear query time with minimal accuracy loss. |
 ---
 
 ## Configuration
