@@ -105,7 +105,7 @@ Evaluated against 20 questions spanning two real estate PDFs:
 
 #### Evaluation Set
 
-| ID | Question | Top-1 | Top-3 |
+| ID | Question |
 |---|---|:---:|:---:|
 | Q01 | Carpet area of Sky Villa 1 vs Sky Villa 2 
 | Q02 | Does Estate 128 triplex include pool and gym? 
