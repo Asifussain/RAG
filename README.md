@@ -4,6 +4,12 @@ A lightweight, high-performance RAG (Retrieval-Augmented Generation) system for 
 
 ---
 
+## Link to the video
+
+https://drive.google.com/file/d/18JSkCblbfuOBub2ffc8HIBFCBAp5ju-Y/view?usp=drivesdk
+
+---
+
 ## Project Structure
 
 ```
