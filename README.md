@@ -211,10 +211,10 @@ Results are saved to `eval_results.json`.
 **Handling large PDFs**
 As page count grows, indexing time scales linearly, each page must be extracted, cleaned, chunked, and embedded. On CPU, this means a 50-page document takes approximately 25–30 seconds to index.
 
-Beyond indexing time, large PDFs introduce memory pressure since all chunk vectors must fit in RAM alongside the FAISS index. A 100-page document generates roughly 1,000 chunks at 400-char size, adding about 6MB to the in-memory index — manageable individually but cumulative across many uploads. So the current practical limit for this prototype is 50 pages per document, beyond which a chunked upload strategy or dedicated vector database with disk-backed storage would be more appropriate.
+Beyond indexing time, large PDFs introduce memory pressure since all chunk vectors must fit in RAM alongside the FAISS index. A 100-page document generates roughly 1,000 chunks at 400-char size, adding about 6MB to the in-memory index, manageable individually but cumulative across many uploads. So the current practical limit for this prototype is 50 pages per document, beyond which a chunked upload strategy or dedicated vector database with disk-backed storage would be more appropriate.
 
 **Balancing chunk size for accuracy and speed**
-Initial chunk size of 200 chars caused fragmentation — specific facts like "Carpet area: 5789 sq. ft." were split across chunks, degrading retrieval. Increasing to 400 chars with 60-char overlap kept related sentences together and improved Top-1 accuracy significantly.
+Initial chunk size of 200 chars caused fragmentation, specific facts like "Carpet area: 5789 sq. ft." were split across chunks, degrading retrieval. Increasing to 400 chars with 60-char overlap kept related sentences together and improved Top-1 accuracy significantly.
 
 **Retrieval precision — semantic mismatch**
 Pure bi-encoder retrieval returned semantically similar but factually wrong chunks (e.g., commercial property descriptions for residential bedroom queries). Solved by switching from L2 to cosine similarity (IndexFlatIP) and adding cross-encoder reranking, which reads query and chunk together to understand intent.
@@ -226,7 +226,7 @@ Real estate brochures repeat layout elements across consecutive pages. Added con
 
 ### Things to include
 **LLM Response Generation**
-The current system returns raw retrieved chunks — the user has to read and interpret them manually. The natural next step is adding an LLM generation layer on top of retrieval:
+The current system returns raw retrieved chunks, the user has to read and interpret them manually. The natural next step is adding an LLM generation layer on top of retrieval:
 
 This converts the system from a **search engine** into a true **document Q&A assistant**. The retrieval pipeline stays identical, the LLM only sees the top-K chunks as context, not the entire document. This keeps latency low and prevents hallucination by grounding every answer in retrieved evidence.
 
