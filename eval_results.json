@@ -1,18 +1,27 @@
 {
   "summary": {
-    "top1_accuracy": 75.0,
-    "top3_accuracy": 95.0,
-    "top1_hits": 15,
-    "top3_hits": 19,
-    "total_questions": 20,
+    "recall_at_1": 80.0,
+    "recall_at_3": 100.0,
+    "recall_at_5": 100.0,
+    "top1_accuracy": 80.0,
+    "top3_accuracy": 100.0,
+    "mrr": 0.9,
+    "ndcg_at_5": 0.9169,
+    "entity_coverage_score": 0.525,
+    "paraphrase_robustness_pct": 80.0,
+    "hallucination_rate_pct": 40.0,
+    "false_positive_rate_pct": 40.0,
+    "caching": {
+      "cold_avg_ms": 235.2,
+      "warm_avg_ms": 64.0,
+      "reduction_pct": 72.8
+    },
     "latency": {
-      "avg_ms": 224.3,
-      "p95_ms": 252.9,
-      "p99_ms": 257.0,
-      "min_ms": 140.8,
-      "max_ms": 258.1,
-      "avg_stage1_ms": 8.2,
-      "avg_stage2_ms": 216.2
+      "avg_ms": 236.0,
+      "p95_ms": 288.4,
+      "p99_ms": 288.7,
+      "avg_stage1_ms": 9.1,
+      "avg_stage2_ms": 226.9
     }
   },
   "questions": [
@@ -25,11 +34,16 @@
         "537",
         "634"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 232.79,
-      "top_result": "TOWER 1\nTOWER 2\nTOWER 3\nTOWER 1\nTOWER 2\nTOWER 3\nTOWER 1\nTOWER 2\nTOWER 3\nSky Villa 1\nLevel 1\nCarpet area: 5789 sq. ft./ 5"
+      "entities": [
+        "5789",
+        "6827"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 0.5,
+      "latency_ms": 236.64,
+      "cached": false
     },
     {
       "id": "Q02",
@@ -40,11 +54,16 @@
         "private pool",
         "exclusive gym"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 228.94,
-      "top_result": "The Estate 128 Sky Villas are designed to embody our value of generosity. Our triplex penthouse residences\ncome equipped"
+      "entities": [
+        "swimming pool",
+        "gym"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 0.5,
+      "latency_ms": 217.58,
+      "cached": false
     },
     {
       "id": "Q03",
@@ -54,11 +73,16 @@
         "guest room",
         "privacy"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 220.95,
-      "top_result": "while separate entrances for bedrooms and guest rooms ensure added privacy. With an indoor-cum-outdoor\nliving room and a"
+      "entities": [
+        "separate entrance",
+        "guest"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 283.89,
+      "cached": false
     },
     {
       "id": "Q04",
@@ -69,11 +93,16 @@
         "living room",
         "wraparound"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 231.56,
-      "top_result": "while separate entrances for bedrooms and guest rooms ensure added privacy. With an indoor-cum-outdoor\nliving room and a"
+      "entities": [
+        "double height",
+        "living room"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 221.94,
+      "cached": false
     },
     {
       "id": "Q05",
@@ -85,11 +114,16 @@
         "wide",
         "wraparound"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 201.39,
-      "top_result": "4.\nPersonalised storage with indoor utility space\n5.\nPrivate bar area\n6.\nExclusive family and entertainment lounge\n7.\nDe"
+      "entities": [
+        "12",
+        "feet"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 216.06,
+      "cached": false
     },
     {
       "id": "Q06",
@@ -99,11 +133,15 @@
         "registration",
         "upreraprj"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 244.42,
-      "top_result": "to any third party without the express written consent of Max Estates 128 Pvt. Ltd. The Project Estate 128 is registered"
+      "entities": [
+        "rera"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 236.33,
+      "cached": false
     },
     {
       "id": "Q07",
@@ -114,11 +152,15 @@
         "private elevator",
         "private lift"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": false,
-      "top3": true,
-      "latency_ms": 219.05,
-      "top_result": "The Estate 128 Sky Villas are designed to embody our value of generosity. Our triplex penthouse residences\ncome equipped"
+      "entities": [
+        "elevator"
+      ],
+      "source": "E128",
+      "rank": 2,
+      "ndcg": 0.6509,
+      "entity_coverage": 0.0,
+      "latency_ms": 223.51,
+      "cached": false
     },
     {
       "id": "Q08",
@@ -131,11 +173,15 @@
         "central air",
         "ducted"
       ],
-      "source_hint": "E128-Skyvilla-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 216.78,
-      "top_result": "Located in Sector 128, Noida, Estate 128 is\ndesigned with the utmost attention to detail,\nevident in its contemporary ar"
+      "entities": [
+        "air conditioning"
+      ],
+      "source": "E128",
+      "rank": 1,
+      "ndcg": 0.8529,
+      "entity_coverage": 0.0,
+      "latency_ms": 237.93,
+      "cached": false
     },
     {
       "id": "Q09",
@@ -147,11 +193,16 @@
         "sq. ft",
         "sq ft"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": false,
-      "top3": true,
-      "latency_ms": 251.43,
-      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+      "entities": [
+        "carpet area",
+        "townhouse"
+      ],
+      "source": "222Rajpur",
+      "rank": 2,
+      "ndcg": 0.6309,
+      "entity_coverage": 0.0,
+      "latency_ms": 254.18,
+      "cached": false
     },
     {
       "id": "Q10",
@@ -159,14 +210,18 @@
       "keywords": [
         "courtyard",
         "forest villa",
-        "units",
-        "number"
+        "units"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 238.14,
-      "top_result": "Landscaped terrace\nCOURTYARD VILLAS\nUnits 5\nPlot size range 364-565 sq.m.\nBuilt up area 4197 sq.ft.\nCarpet area 3276 sq."
+      "entities": [
+        "courtyard",
+        "forest villa"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 0.5,
+      "latency_ms": 288.38,
+      "cached": false
     },
     {
       "id": "Q11",
@@ -175,14 +230,18 @@
         "plot",
         "sq. ft",
         "sq ft",
-        "townhouse",
-        "range"
+        "townhouse"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 215.17,
-      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+      "entities": [
+        "plot",
+        "townhouse"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 0.5,
+      "latency_ms": 288.83,
+      "cached": false
     },
     {
       "id": "Q12",
@@ -195,11 +254,16 @@
         "botanical",
         "green"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 258.06,
-      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+      "entities": [
+        "forest",
+        "landscape"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 0.9829,
+      "entity_coverage": 0.5,
+      "latency_ms": 220.3,
+      "cached": false
     },
     {
       "id": "Q13",
@@ -210,11 +274,15 @@
         "natural light",
         "skylight"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": false,
-      "top3": true,
-      "latency_ms": 248.29,
-      "top_result": "Max Estates presents an array of residences at 222 Rajpur -\ntownhouses, courtyard villas and forest villas. All residenc"
+      "entities": [
+        "sky court"
+      ],
+      "source": "222Rajpur",
+      "rank": 2,
+      "ndcg": 0.6509,
+      "entity_coverage": 0.0,
+      "latency_ms": 242.82,
+      "cached": false
     },
     {
       "id": "Q14",
@@ -224,14 +292,18 @@
         "staff",
         "service",
         "private",
-        "separated",
-        "separation"
+        "separated"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": false,
-      "top3": false,
-      "latency_ms": 248.99,
-      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+      "entities": [
+        "kitchen",
+        "staff"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 245.47,
+      "cached": false
     },
     {
       "id": "Q15",
@@ -241,11 +313,15 @@
         "lift",
         "private"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 219.74,
-      "top_result": "The Forest Villas are designed as an immersion into landscape.\nOpening up to the brilliant views of the Malsi forest and"
+      "entities": [
+        "elevator"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 277.27,
+      "cached": false
     },
     {
       "id": "Q16",
@@ -257,11 +333,15 @@
         "exclusive",
         "resident"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 238.97,
-      "top_result": "INTIMATE CONTACT\n222 Rajpur is a premier residential community\nlocated adjacent to the Malsi forest, on the\nmost exclusi"
+      "entities": [
+        "botanical"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 0.9829,
+      "entity_coverage": 0.0,
+      "latency_ms": 280.12,
+      "cached": false
     },
     {
       "id": "Q17",
@@ -274,11 +354,15 @@
         "forest",
         "nature"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 232.45,
-      "top_result": "School, Dehradun offers a tranquil retreat from the\nintensity of Indian cities. Nestled in the natural embrace\nof the Ma"
+      "entities": [
+        "view"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 0.9558,
+      "entity_coverage": 1.0,
+      "latency_ms": 237.1,
+      "cached": false
     },
     {
       "id": "Q18",
@@ -288,11 +372,15 @@
         "registration",
         "rera"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 252.61,
-      "top_result": "222 Rajpur Road\nDehradun 248009\nT 8899118222\nE sales@maxestates.in\nwww.222rajpur.co.in\nCorporate office\nMax Towers, L-15"
+      "entities": [
+        "ukrera"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 0.0,
+      "latency_ms": 248.47,
+      "cached": false
     },
     {
       "id": "Q19",
@@ -303,28 +391,36 @@
         "zone iv",
         "zone 4"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": false,
-      "top3": true,
-      "latency_ms": 140.81,
-      "top_result": "advantage of the natural beauty of the site, the architecture\nat 222 Rajpur encompasses both indoor and outdoor living.\n"
+      "entities": [
+        "seismic",
+        "zone"
+      ],
+      "source": "222Rajpur",
+      "rank": 2,
+      "ndcg": 0.6309,
+      "entity_coverage": 0.0,
+      "latency_ms": 165.81,
+      "cached": false
     },
     {
       "id": "Q20",
-      "question": "What specific security measures are implemented for resident car recognition at the Dehradun site and how long does it take to drive to Jolly Grant Airport?",
+      "question": "What specific security measures are implemented for resident car recognition at the Dehradun site?",
       "keywords": [
         "car recognition",
         "rfid",
         "number plate",
-        "jolly grant",
-        "airport",
-        "minutes"
+        "security",
+        "vehicle"
       ],
-      "source_hint": "222-Rajpur-Document.pdf",
-      "top1": true,
-      "top3": true,
-      "latency_ms": 146.44,
-      "top_result": "By Air: With over twelve daily flights from Delhi, Dehradun is\nperfectly accessible. A short drive to the Jolly Grant ai"
+      "entities": [
+        "car recognition"
+      ],
+      "source": "222Rajpur",
+      "rank": 1,
+      "ndcg": 1.0,
+      "entity_coverage": 1.0,
+      "latency_ms": 97.3,
+      "cached": false
     }
   ]
 }

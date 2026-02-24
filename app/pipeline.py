@@ -14,16 +14,15 @@ Two-stage retrieval strategy:
     Dramatically improves precision — especially for specific factual queries
     like "carpet area of Sky Villa 1" where the bi-encoder may rank
     descriptive text above the actual number.
+
 """
 
 import re
 import time
 import uuid
-import json
-from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 import faiss
 import numpy as np
@@ -39,8 +38,10 @@ from app.config import (
     EMBEDDING_MODEL, RERANKER_MODEL,
     CHUNK_SIZE, CHUNK_OVERLAP,
     DEFAULT_TOP_K, MAX_TOP_K, CANDIDATE_K,
-    INDEX_DIR, SCORE_THRESHOLD,
+    INDEX_DIR, SCORE_THRESHOLD, DB_ENABLED,
 )
+from app.db import save_document, get_all_documents, init_db
+from app.cache import get_cached_results, set_cached_results
 
 MASTER_INDEX_ID = "master"
 
@@ -134,11 +135,17 @@ def make_faiss_index(chunks: List[Document], embeddings: HuggingFaceEmbeddings) 
     texts     = [c.page_content for c in chunks]
     metadatas = [c.metadata for c in chunks]
 
-    vectors = np.array(embeddings.embed_documents(texts), dtype=np.float32)
-    dim = vectors.shape[1]
+    # Batch embed all texts in one call — always fresh for new documents
+    t0 = time.perf_counter()
+    raw_vectors = embeddings.embed_documents(texts)
+    vectors = np.array(raw_vectors, dtype=np.float32)
+    print(f"  Embedding {len(texts)} chunks: {(time.perf_counter()-t0)*1000:.0f}ms")
 
+    t1 = time.perf_counter()
+    dim = vectors.shape[1]
     index = faiss.IndexFlatIP(dim)
     index.add(vectors)
+    print(f"  FAISS index build: {(time.perf_counter()-t1)*1000:.0f}ms")
 
     docstore_dict = {}
     index_to_id   = {}
@@ -166,6 +173,8 @@ class RAGPipeline:
     Stage 1 — FAISS bi-encoder: fast, fetches CANDIDATE_K candidates.
     Stage 2 — CrossEncoder reranker: precise, re-scores candidates and
               returns the true top_k in correct relevance order.
+
+    Both models load once at startup — zero per-request model loading cost.
     """
 
     def __init__(self):
@@ -177,8 +186,7 @@ class RAGPipeline:
         )
 
         # Stage 2: cross-encoder for reranking candidates
-        # ms-marco-MiniLM-L-6-v2 is trained on MS MARCO passage ranking —
-        # excellent at understanding query-document relevance for factual Q&A
+        # ms-marco-MiniLM-L-6-v2 is trained on MS MARCO passage ranking
         print(f"Loading reranker: {RERANKER_MODEL} ...")
         self._reranker = CrossEncoder(
             RERANKER_MODEL,
@@ -194,6 +202,10 @@ class RAGPipeline:
         )
 
         self._indexes: Dict[str, FAISS] = {}
+
+        # Init Supabase table on startup
+        init_db()
+
         self._load_master()
 
     # ── Master index ──────────────────────────────────────────────────────
@@ -207,24 +219,37 @@ class RAGPipeline:
                 allow_dangerous_deserialization=True,
             )
 
-    # ── Registry — stores filename metadata per index_id ─────────────────
+    # ── Registry — Supabase PostgreSQL ────────────────────────────────────
+    # Stores filename + metadata per index_id.
+    # Falls back to registry.json if DATABASE_URL not configured.
 
-    def _registry_path(self):
-        return INDEX_DIR / "registry.json"
+    def _save_registry_entry(self, index_id: str, filename: str,
+                              total_pages: int, total_chunks: int,
+                              doc_type: str = "document", extra: dict = None):
+        if DB_ENABLED:
+            save_document(index_id, filename, total_pages,
+                         total_chunks, doc_type, extra)
+        else:
+            # Fallback: local JSON registry
+            import json
+            p = INDEX_DIR / "registry.json"
+            reg = json.loads(p.read_text()) if p.exists() else {}
+            reg[index_id] = {
+                "filename": filename, "total_pages": total_pages,
+                "total_chunks": total_chunks, "doc_type": doc_type,
+            }
+            p.write_text(json.dumps(reg, indent=2))
 
-    def _load_registry(self) -> dict:
-        p = self._registry_path()
-        if p.exists():
-            return json.loads(p.read_text())
-        return {}
-
-    def _save_registry_entry(self, index_id: str, entry: dict):
-        registry = self._load_registry()
-        registry[index_id] = entry
-        self._registry_path().write_text(json.dumps(registry, indent=2))
-
-    def get_registry(self) -> dict:
-        return self._load_registry()
+    def get_registry(self) -> list:
+        if DB_ENABLED:
+            return get_all_documents()
+        # Fallback: local JSON registry
+        import json
+        p = INDEX_DIR / "registry.json"
+        if not p.exists():
+            return []
+        reg = json.loads(p.read_text())
+        return [{"index_id": k, **v} for k, v in reg.items()]
 
     def _save_master(self):
         if MASTER_INDEX_ID in self._indexes:
@@ -233,11 +258,19 @@ class RAGPipeline:
             )
 
     def _update_master(self, new_vectorstore: FAISS):
+        t0 = time.perf_counter()
         if MASTER_INDEX_ID not in self._indexes:
-            self._indexes[MASTER_INDEX_ID] = new_vectorstore
+            master_path = str(INDEX_DIR / MASTER_INDEX_ID)
+            new_vectorstore.save_local(master_path)
+            self._indexes[MASTER_INDEX_ID] = FAISS.load_local(
+                master_path,
+                self._embeddings,
+                allow_dangerous_deserialization=True,
+            )
         else:
             self._indexes[MASTER_INDEX_ID].merge_from(new_vectorstore)
-        self._save_master()
+            self._save_master()
+        print(f"  Master index update: {(time.perf_counter()-t0)*1000:.0f}ms")
 
     def has_master(self) -> bool:
         return MASTER_INDEX_ID in self._indexes
@@ -253,27 +286,22 @@ class RAGPipeline:
         for i, chunk in enumerate(chunks):
             chunk.metadata["chunk_index"] = i
 
+        print(f"Indexing {Path(pdf_path).name} — {len(chunks)} chunks")
         vectorstore = make_faiss_index(chunks, self._embeddings)
 
-        index_id = str(uuid.uuid4())
-        self._indexes[index_id] = vectorstore
-        vectorstore.save_local(str(INDEX_DIR / index_id))
         self._update_master(vectorstore)
 
-        result = {
-            "index_id":     index_id,
-            "filename":     Path(pdf_path).name,
+        filename = Path(pdf_path).name
+        doc_id   = str(uuid.uuid4())  
+        self._save_registry_entry(
+            doc_id, filename,
+            total_pages, len(chunks), "document"
+        )
+        return {
+            "filename":     filename,
             "total_pages":  total_pages,
             "total_chunks": len(chunks),
         }
-        self._save_registry_entry(index_id, {
-            "filename":     result["filename"],
-            "total_pages":  total_pages,
-            "total_chunks": len(chunks),
-            "uploaded_at":  datetime.utcnow().isoformat(),
-            "type":         "document",
-        })
-        return result
 
     def index_collection(self, pdf_paths: List[str]) -> dict:
         all_chunks     = []
@@ -303,18 +331,20 @@ class RAGPipeline:
 
         vectorstore   = make_faiss_index(all_chunks, self._embeddings)
         collection_id = str(uuid.uuid4())
-        self._indexes[collection_id] = vectorstore
-        vectorstore.save_local(str(INDEX_DIR / collection_id))
+
         self._update_master(vectorstore)
 
-        self._save_registry_entry(collection_id, {
-            "filename":     ", ".join(f["filename"] for f in file_summaries if "error" not in f),
-            "total_pages":  sum(f.get("total_pages", 0) for f in file_summaries if "error" not in f),
-            "total_chunks": len(all_chunks),
-            "uploaded_at":  datetime.utcnow().isoformat(),
-            "type":         "collection",
-            "files":        file_summaries,
-        })
+        col_filename = ", ".join(
+            f["filename"] for f in file_summaries if "error" not in f
+        )
+        col_pages = sum(
+            f.get("total_pages", 0) for f in file_summaries if "error" not in f
+        )
+        self._save_registry_entry(
+            collection_id, col_filename,
+            col_pages, len(all_chunks), "collection",
+            extra={"files": file_summaries}
+        )
 
         return {
             "collection_id": collection_id,
@@ -324,20 +354,9 @@ class RAGPipeline:
 
     # ── Index loading ─────────────────────────────────────────────────────
 
-    def load_index(self, index_id: str) -> bool:
-        save_path = INDEX_DIR / index_id
-        if not save_path.exists():
-            return False
-        if index_id not in self._indexes:
-            self._indexes[index_id] = FAISS.load_local(
-                str(save_path),
-                self._embeddings,
-                allow_dangerous_deserialization=True,
-            )
-        return True
-
     def has_index(self, index_id: str) -> bool:
-        return index_id in self._indexes or self.load_index(index_id)
+        # Only master index exists now
+        return index_id == MASTER_INDEX_ID and self.has_master()
 
     def active_index_count(self) -> int:
         return len(self._indexes)
@@ -352,7 +371,7 @@ class RAGPipeline:
         Returns (results, stage1_latency_ms, stage2_latency_ms).
         """
         top_k      = min(top_k, MAX_TOP_K)
-        candidate_k = max(CANDIDATE_K, top_k) 
+        candidate_k = max(CANDIDATE_K, top_k)  # always fetch at least top_k
 
         # ── Stage 1: FAISS bi-encoder search ──────────────────────────────
         t0 = time.perf_counter()
@@ -371,6 +390,8 @@ class RAGPipeline:
             return [], stage1_ms, 0.0
 
         # ── Stage 2: Cross-encoder reranking ──────────────────────────────
+        # Feed (query, chunk_text) pairs — cross-encoder reads both together
+        # and produces a relevance score that understands intent vs. content
         t1 = time.perf_counter()
         pairs         = [(question, doc.page_content) for doc, _ in candidates]
         rerank_scores = self._reranker.predict(pairs)   # returns raw logits (higher = more relevant)
@@ -397,11 +418,6 @@ class RAGPipeline:
         ]
 
         return results, stage1_ms, stage2_ms
-
-    def query(self, index_id: str, question: str, top_k: int = DEFAULT_TOP_K):
-        if not self.has_index(index_id):
-            raise KeyError(f"Index '{index_id}' not found.")
-        return self._run_search(self._indexes[index_id], question, top_k)
 
     def query_all(self, question: str, top_k: int = DEFAULT_TOP_K):
         if not self.has_master():

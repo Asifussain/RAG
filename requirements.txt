@@ -1,16 +1,29 @@
-numpy
-requests
-
-FastAPI
-uvicorn[standard]
-python-multipart
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+aiofiles>=23.0.0
+python-dotenv>=1.0.0
 
 # PDF processing
-pymupdf         
+pymupdf>=1.24.0
 
-# Embeddings + RAG
-sentence-transformers
-langchain-community
-langchain-text-splitters
-langchain-huggingface
-faiss-cpu
+# Stage 1 — bi-encoder embeddings + FAISS
+sentence-transformers>=2.7.0
+langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
+langchain-huggingface>=0.0.3
+faiss-cpu>=1.8.0
+
+# Stage 2 — cross-encoder reranker
+# CrossEncoder is part of sentence-transformers, no extra install needed.
+
+# Supabase PostgreSQL — metadata registry
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Upstash Redis — query + embedding cache
+upstash-redis>=1.0.0
+
+# Evaluation
+numpy>=1.24.0
+requests>=2.31.0

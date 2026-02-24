@@ -8,12 +8,6 @@ from pydantic import BaseModel, Field
 
 # ── Inbound ────────────────────────────────────────────────────────────────
 
-class QueryRequest(BaseModel):
-    question: str = Field(..., min_length=3, max_length=500, example="What is the carpet area of Sky Villa 1?")
-    index_id: str = Field(..., description="index_id or collection_id from /upload or /collection/create")
-    top_k: Optional[int] = Field(default=5, ge=1, le=10)
-
-
 class QueryAllRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=500, example="Which property has a swimming pool?")
     top_k: Optional[int] = Field(default=5, ge=1, le=10)
@@ -38,10 +32,10 @@ class QueryResponse(BaseModel):
     stage2_latency_ms: float = Field(description="Cross-encoder reranking time")
     total_latency_ms: float
     index_id: str
+    cached: bool = Field(default=False, description="True if result was served from Redis cache")
 
 
 class UploadResponse(BaseModel):
-    index_id: str
     filename: str
     total_pages: int
     total_chunks: int
@@ -54,6 +48,7 @@ class HealthResponse(BaseModel):
     reranker: str
     active_indexes: int
     master_index_ready: bool
+    cache: Optional[dict] = None
 
 
 class FileSummary(BaseModel):

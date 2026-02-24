@@ -2,12 +2,11 @@
 main.py — FastAPI application entry point.
 
 Routes:
-  POST /upload              -> Upload a single PDF, adds to master index
-  POST /collection/create   -> Upload multiple PDFs, adds all to master index
-  POST /query               -> Query a specific index_id or collection_id
+  POST /upload              -> Upload a single PDF, merged into master index
+  POST /collection/create   -> Upload multiple PDFs, merged into master index
   POST /query/all           -> Query ALL ever-uploaded PDFs (master index)
-  GET  /health              -> Health check
-  GET  /documents           -> List all persisted indexes
+  GET  /health              -> Health check + cache stats
+  GET  /documents           -> List all indexed documents from Supabase
 
 Run with:
   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -26,11 +25,12 @@ from app.config import (
     EMBEDDING_MODEL, RERANKER_MODEL, INDEX_DIR,
 )
 from app.models import (
-    QueryRequest, QueryAllRequest, QueryResponse,
+    QueryAllRequest, QueryResponse,
     UploadResponse, HealthResponse, ChunkResult,
     CollectionResponse, FileSummary,
 )
 from app.pipeline import rag_pipeline, MASTER_INDEX_ID
+from app.cache import get_cached_results, set_cached_results, cache_stats
 
 
 # ─────────────────────────────────────────────
@@ -76,7 +76,8 @@ async def _save_upload(file: UploadFile) -> Path:
     return save_path
 
 
-def _build_response(question: str, index_id: str, pipeline_result: tuple) -> QueryResponse:
+def _build_response(question: str, index_id: str,
+                    pipeline_result: tuple, cached: bool = False) -> QueryResponse:
     """Convert pipeline output tuple into QueryResponse."""
     results, stage1_ms, stage2_ms = pipeline_result
     return QueryResponse(
@@ -97,6 +98,7 @@ def _build_response(question: str, index_id: str, pipeline_result: tuple) -> Que
         stage2_latency_ms=round(stage2_ms, 2),
         total_latency_ms=round(stage1_ms + stage2_ms, 2),
         index_id=index_id,
+        cached=cached,
     )
 
 
@@ -112,18 +114,14 @@ def health_check():
         reranker=RERANKER_MODEL,
         active_indexes=rag_pipeline.active_index_count(),
         master_index_ready=rag_pipeline.has_master(),
+        cache=cache_stats(),
     )
 
 
 @app.get("/documents", tags=["System"])
 def list_documents():
     """List all indexed documents with real filenames. Reads from registry.json."""
-    registry  = rag_pipeline.get_registry()
-    documents = [
-        {"index_id": idx, **meta}
-        for idx, meta in registry.items()
-    ]
-    documents.sort(key=lambda x: x.get("uploaded_at", ""), reverse=True)
+    documents = rag_pipeline.get_registry()   # already sorted newest first
     return {
         "documents":          documents,
         "count":              len(documents),
@@ -149,7 +147,6 @@ async def upload_pdf(file: UploadFile = File(...)):
         save_path.unlink(missing_ok=True)
 
     return UploadResponse(
-        index_id=result["index_id"],
         filename=result["filename"],
         total_pages=result["total_pages"],
         total_chunks=result["total_chunks"],
@@ -189,35 +186,36 @@ async def create_collection(files: List[UploadFile] = File(...)):
 # QUERY ROUTES
 # ─────────────────────────────────────────────
 
-@app.post("/query", response_model=QueryResponse, tags=["Search"])
-def query_index(request: QueryRequest):
-    """
-    Two-stage query on a specific index.
-    Stage 1: FAISS fetches candidates. Stage 2: cross-encoder reranks them.
-    Response includes both stage latencies and rerank_score per result.
-    """
-    if not rag_pipeline.has_index(request.index_id):
-        raise HTTPException(status_code=404, detail=f"Index '{request.index_id}' not found.")
-    try:
-        result = rag_pipeline.query(request.index_id, request.question, request.top_k or 5)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return _build_response(request.question, request.index_id, result)
-
-
 @app.post("/query/all", response_model=QueryResponse, tags=["Search"])
 def query_all(request: QueryAllRequest):
     """
     Two-stage query across ALL ever-uploaded PDFs via master index.
     No index_id needed. Each result shows which file and page answered.
+    Results are cached in Upstash Redis — repeated queries return instantly.
     """
     if not rag_pipeline.has_master():
         raise HTTPException(status_code=404, detail="No documents uploaded yet.")
+
+    # Check result cache first
+    cached = get_cached_results(request.question, MASTER_INDEX_ID)
+    if cached:
+        from app.pipeline import SearchResult
+        results = [SearchResult(**r) for r in cached["results"]]
+        return _build_response(
+            request.question, MASTER_INDEX_ID,
+            (results, 0.0, 0.0), cached=True
+        )
+
     try:
         result = rag_pipeline.query_all(request.question, request.top_k or 5)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Cache for next time
+    results, s1, s2 = result
+    set_cached_results(request.question, MASTER_INDEX_ID, {
+        "results": [vars(r) for r in results]
+    })
 
     return _build_response(request.question, MASTER_INDEX_ID, result)
 
