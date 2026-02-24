@@ -265,7 +265,22 @@ Measured across 20 evaluation queries on CPU:
 All queries within the 2 second target. Generation time is not applicable — the current system returns raw retrieved chunks without LLM synthesis.
 
 **Is reranking worth the added latency?**
-Yes. Top-3 accuracy of 100% with reranking versus ~70% without it justifies the ~209ms cost. The cross-encoder's ability to understand query intent versus chunk content is what separates relevant from irrelevant results for specific factual queries.
+Metrics without reranking:
+
+| Metric | Score |
+|---|---|
+| **Recall@1 (Top-1 Accuracy)** | **70.0% (14/20)** |
+| **Recall@3 (Top-3 Accuracy)** | **85.0% (17/20)** |
+| **Recall@5** | **100.0% (20/20)** |
+| **MRR** | **0.8075** |
+| **nDCG@5** | **0.8483** |
+| **Entity Coverage Score** | **0.45** |
+| **Paraphrase Robustness** | **80.0%** |
+| **Hallucination Rate** | **40.0%** |
+| **False Positive Rate** | **40.0%** |
+
+
+Yes. Top-3 accuracy of 100% with reranking versus ~85% without it justifies the ~209ms cost to some extent. The cross-encoder's ability to understand query intent versus chunk content is what separates relevant from irrelevant results for specific factual queries.
 
 ---
 
