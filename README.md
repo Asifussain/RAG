@@ -227,6 +227,7 @@ Evaluated against 20 questions spanning two real estate PDFs:
 | Q19 | Seismic zone adherence | 2 | 0.63 | 0.00 |
 | Q20 | Car recognition security measures | 1 | 1.00 | 1.00 |
 
+**Note on Entity Coverage: Since the current system is retrieval-focused and does not generate synthetic responses, Entity Coverage is computed over top-K retrieved chunks.
 ---
 
 ### Caching Strategy
