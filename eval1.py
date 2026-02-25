@@ -2,11 +2,10 @@
 eval1.py — Iteration 1 of 3
 ─────────────────────────────
 Covers: Section A (222 Rajpur, 25 questions) + Section B (Max Towers, 18 questions)
-LLM calls: ~43  |  Est. tokens: ~65,000  |  Est. time: ~3 min (with 2.5s sleep)
 
 HOW TO RUN:
   If you have no token limit   → run eval1.py, eval2.py, eval3.py back to back
-  If you have a 100k TPD limit → run one file per day / per API key
+  If you have a 100k TPD limit → run one file per API key
 
   python eval1.py              # runs eval, PDFs must already be indexed
   python eval1.py --upload     # uploads all 4 PDFs first
@@ -26,10 +25,9 @@ API   = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 TOP_K = 5
 
 PDF_FILES = [
-    "222-Rajpur-Document.pdf",
-    "E128-Skyvilla-Document.pdf",
-    "MaxTowers-Document.pdf",
-    "MaxHouse-Document.pdf",
+    "222-rajpur-brochure.pdf",
+    "max-towers-brochure.pdf",
+    "max-house-brochure.pdf",
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -90,7 +88,7 @@ SECTION_B = [
 FALSE_POSITIVE_THRESHOLD = -3.0
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────
+#  Helpers 
 
 def check_server():
     try:
@@ -166,7 +164,7 @@ def print_section(title):
     print(f"\n{'═'*60}\n  {title}\n{'═'*60}")
 
 
-# ── Main ───────────────────────────────────────────────────────────────────
+#  Main 
 
 def run_eval(retrieval_only=False, verbose=False):
 

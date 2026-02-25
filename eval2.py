@@ -3,11 +3,10 @@ eval2.py — Iteration 2 of 3
 ─────────────────────────────
 Covers: Section C (Max House, 13 questions) + Section D (Cross-property, 15 questions)
         + Section E (Client Simulation, 9 questions)
-LLM calls: ~37  |  Est. tokens: ~55,000  |  Est. time: ~2.5 min (with 2.5s sleep)
 
 HOW TO RUN:
   If you have no token limit   → run eval1.py, eval2.py, eval3.py back to back
-  If you have a 100k TPD limit → run one file per day / per API key
+  If you have a 100k TPD limit → run one file per API key
 
   python eval2.py
   python eval2.py --retrieval  # skip LLM calls
@@ -80,7 +79,7 @@ SECTION_E = [
 ]
 
 
-# ── Helpers (identical across all eval files) ──────────────────────────────
+# Helpers
 
 def check_server():
     try:

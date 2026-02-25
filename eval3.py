@@ -4,7 +4,6 @@ eval3.py — Iteration 3 of 3
 Covers: Section F (Paraphrase, 15 questions) + Section G (Negative, 10 questions)
         + Section H (Ambiguous/Clarification, 5 questions)
         + Caching benchmark
-LLM calls: ~30  |  Est. tokens: ~45,000  |  Est. time: ~2 min (with 2.5s sleep)
 
 HOW TO RUN:
   python eval3.py
@@ -106,7 +105,7 @@ def print_section(t): print(f"\n{'═'*60}\n  {t}\n{'═'*60}")
 
 def run_eval(retrieval_only=False, verbose=False):
 
-    # ── Section F: Paraphrase Robustness ──────────────────────────────────
+    #  Section F: Paraphrase Robustness 
     print_section("Section F — Paraphrase Robustness")
 
     para_results = []
@@ -131,7 +130,7 @@ def run_eval(retrieval_only=False, verbose=False):
     para_score = round(sum(para_results)/len(para_results)*100,1) if para_results else 0
     print(f"\n  Paraphrase Robustness Score: {para_score}%  ({sum(para_results)}/{len(para_results)} consistent)")
 
-    # ── Section G: Negative / Adversarial ─────────────────────────────────
+    #  Section G: Negative / Adversarial 
     print_section("Section G — Negative / Adversarial")
 
     fp_count = 0
@@ -178,7 +177,7 @@ def run_eval(retrieval_only=False, verbose=False):
     print(f"\n  False Positive Rate : {fpr}%  ({fp_count}/{len(SECTION_G)})")
     print(f"  Hallucination Rate  : {hal_rate}%  ({hallucination_count}/{hal_total} answered questions)")
 
-    # ── Section H: Ambiguous / Clarification ──────────────────────────────
+    # ─ Section H: Ambiguous / Clarification 
     print_section("Section H — Ambiguous / Clarification")
 
     clarification_hits = 0
@@ -210,7 +209,7 @@ def run_eval(retrieval_only=False, verbose=False):
     clarification_score = round(clarification_hits/clarification_total*100,1) if clarification_total>0 else 0
     print(f"\n  Clarification Score : {clarification_score}%  ({clarification_hits}/{clarification_total})")
 
-    # ── Caching benchmark ──────────────────────────────────────────────────
+    #  Caching benchmark 
     print_section("Caching Benchmark")
     print("  Re-running 5 questions to measure warm cache speedup...\n")
 
@@ -236,7 +235,7 @@ def run_eval(retrieval_only=False, verbose=False):
     cache_pct = round((1-avg_warm/avg_cold)*100,1) if avg_cold>0 and avg_warm>0 else 0
     print(f"\n  Cold avg : {avg_cold}ms  |  Warm avg : {avg_warm}ms  |  Reduction : {cache_pct}%")
 
-    # ── Summary ────────────────────────────────────────────────────────────
+    #  Summary 
     print(f"""
 {'═'*60}
   EVAL 3/3 SUMMARY  (Sections F + G + H)

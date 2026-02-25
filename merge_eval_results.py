@@ -25,7 +25,6 @@ if not any([e1, e2, e3]):
     print("No eval result files found. Run eval1.py, eval2.py, eval3.py first.")
     raise SystemExit
 
-# ── Merge retrieval questions from e1 + e2 ────────────────────────────────
 all_questions = []
 if e1: all_questions.extend(e1.get("questions",[]))
 if e2: all_questions.extend(e2.get("questions",[]))
@@ -45,14 +44,12 @@ avg_ndcg = round(sum(ndcgs)/len(ndcgs),4) if ndcgs else 0
 ents = [q.get("entity_coverage",0) for q in all_questions]
 avg_ent = round(sum(ents)/len(ents),4) if ents else 0
 
-# ── Latency — average across both files ───────────────────────────────────
 def avg_latency(key, *sources):
     vals = [s["summary"]["latency"][key] for s in sources if s and s["summary"]["latency"].get(key,0)>0]
     return round(sum(vals)/len(vals),1) if vals else 0
 
 sources_12 = [s for s in [e1,e2] if s]
 
-# ── Robustness / negative / clarification from e3 ─────────────────────────
 para_score    = e3["summary"]["paraphrase_robustness_pct"] if e3 else "n/a"
 fpr           = e3["summary"]["false_positive_rate_pct"] if e3 else "n/a"
 hal_rate      = e3["summary"]["hallucination_rate_pct"] if e3 else "n/a"
