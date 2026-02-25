@@ -1,6 +1,6 @@
 # Real Estate Document Intelligence API
 
-A high-performance RAG (Retrieval-Augmented Generation) system for querying real estate PDFs using natural language. Built with a two-stage retrieval pipeline: FAISS bi-encoder for fast candidate retrieval, followed by a cross-encoder reranker for precision. Backed by Supabase PostgreSQL for metadata storage and Upstash Redis for query caching.
+A production-grade RAG (Retrieval-Augmented Generation) system for querying real estate PDFs using natural language. The pipeline runs two-stage retrieval, FAISS bi-encoder for fast candidate fetch, cross-encoder reranker for precision and synthesises grounded answers via Groq LLM. Backed by Supabase PostgreSQL for metadata and Upstash Redis for query caching.
 
 ---
 
@@ -13,22 +13,25 @@ A high-performance RAG (Retrieval-Augmented Generation) system for querying real
 ## Project Structure
 
 ```
-real-estate-rag/
+real-estate-doc-intelligence/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py        # FastAPI routes
-│   ├── pipeline.py    # Two-stage RAG logic (FAISS + CrossEncoder)
-│   ├── models.py      # Pydantic request/response schemas
-│   ├── config.py      # All tunables (chunk size, models, thresholds)
-│   ├── db.py          # Supabase PostgreSQL metadata registry
-│   └── cache.py       # Upstash Redis query cache
+│   ├── main.py          # FastAPI routes
+│   ├── pipeline.py      # Two-stage RAG logic (FAISS + CrossEncoder)
+│   ├── models.py        # Pydantic request/response schemas
+│   ├── config.py        # All tunables (chunk size, models, thresholds)
+│   ├── db.py            # Supabase PostgreSQL metadata registry
+│   ├── cache.py         # Upstash Redis query cache
+│   └── llm.py           # Groq LLM generation layer
 ├── frontend/
-│   └── index.html     # Single-file UI (no framework, pure HTML/CSS/JS)
-├── uploads/           # Temp storage for incoming PDFs (auto-cleaned)
+│   └── index.html       # Simple UI
+├── uploads/             # Temp storage for incoming PDFs
 ├── indexes/
-│   └── master/        # Single master FAISS index — all PDFs merged here
-├── eval.py            # Comprehensive evaluation script
-├── eval_results.json  # Latest evaluation results
+│   └── master/          # Single master FAISS index — all PDFs merged here
+├── eval1.py             # Evaluation — Sections A + B (222 Rajpur + Max Towers)
+├── eval2.py             # Evaluation — Sections C + D + E (Max House + Cross-property)
+├── eval3.py             # Evaluation — Sections F + G + H (Robustness + Negative + Clarification)
+├── merge_eval_results.py # Merges eval1/2/3 results into final report
 ├── requirements.txt
 └── README.md
 ```
@@ -50,7 +53,7 @@ pip install -r requirements.txt
 
 # 4. Configure environment
 cp .env.example .env
-# Fill in your Supabase and Upstash credentials (optional — falls back gracefully)
+# Fill in your Supabase, Upstash, and Groq credentials
 
 # 5. Start the server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -60,7 +63,7 @@ On first run, two models download automatically:
 - `all-MiniLM-L6-v2` (~80MB) — bi-encoder for FAISS indexing
 - `cross-encoder/ms-marco-MiniLM-L-6-v2` (~80MB) — reranker for precision
 
-Visit `http://localhost:8000` for the UI or `http://localhost:8000/docs` for the interactive API docs.
+Visit `http://localhost:8000` for the UI or `http://localhost:8000/docs` for the interactive API.
 
 ---
 
@@ -74,11 +77,15 @@ DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-region.pooler.supabase
 UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
 
+# Groq LLM — answer generation
+# Get a free key at console.groq.com
+GROQ_API_KEY=your-groq-api-key
+
 # Cache TTL in seconds (default: 1 hour)
 CACHE_TTL_SECONDS=3600
 ```
 
-Both are optional — the system falls back to `registry.json` and disables caching if credentials are not set.
+Supabase and Upstash are optional — the system falls back to `registry.json` and disables caching gracefully. Groq is required for the `/answer` endpoint but `/query/all` retrieval works without it.
 
 ---
 
@@ -88,30 +95,35 @@ Both are optional — the system falls back to `registry.json` and disables cach
 PDF Upload
   │
   ├─► PyMuPDF extraction → text cleaning → chunking (400 chars, 60 overlap)
-  ├─► Bi-encoder (all-MiniLM-L6-v2) embeds chunks
-  ├─► FAISS IndexFlatIP (cosine similarity) index built
+  ├─► Bi-encoder (all-MiniLM-L6-v2) embeds all chunks in a single batch call
+  ├─► FAISS IndexFlatIP (cosine similarity) 
   ├─► Merged into single master index (all PDFs searchable together)
-  └─► Metadata saved to Supabase PostgreSQL
+  └─► Metadata saved to Supabase PostgreSQL + local registry.json fallback
 
-Query
+Query  (/query/all — retrieval only)
   │
-  ├─► Check Upstash Redis cache → return instantly if hit (~41ms)
-  │
-  ├─► Stage 1 — FAISS bi-encoder search (~9ms)
+  ├─► Check Upstash Redis cache → return instantly if hit (~35ms)
+  ├─► Stage 1 — FAISS bi-encoder search (~13ms)
   │     Embed query, cosine search, score threshold filter (≥ 0.3)
   │     Fetch top-20 candidates
+  └─► Stage 2 — CrossEncoder reranking (~198ms)
+        Reads (query + chunk) together, understands full semantic intent
+        Returns top-K sorted by relevance score, cached in Redis
+
+Answer  (/answer — retrieval + LLM generation)
   │
-  └─► Stage 2 — CrossEncoder reranking (~209ms)
-        Reads (query + chunk) together, understands full intent
-        Returns true top-K sorted by relevance score
-        Result cached in Redis for future identical queries
+  ├─► Same Stage 1 + Stage 2 as above
+  └─► Stage 3 — Groq LLM synthesis (~727ms avg)
+        Top-K chunks passed as grounded context
+        llama-3.3-70b-versatile synthesises a cited natural language answer
+        Answer cached in Redis separately from raw retrieval results
 ```
 
-**Why two stages?**
-A bi-encoder embeds query and document independently — fast but imprecise. In early testing, pure bi-encoder retrieval returned semantically similar but factually wrong chunks (commercial property descriptions for residential bedroom queries). A cross-encoder reads query and chunk together, understanding intent vs. content. This improved Top-1 accuracy from ~55% to 80% and Top-3 from ~70% to 100%.
+**Why two retrieval stages?** A bi-encoder embeds query and document independently — fast but imprecise. In early testing, pure bi-encoder retrieval returned semantically similar but factually wrong chunks. A cross-encoder reads query and chunk together, understanding intent vs. content, this improved Top-1 accuracy from ~55% to 85% and Top-3 from ~70% to 91%.
 
-**Why a single master index?**
-Rather than maintaining per-document indexes and requiring users to track `index_id` values, every uploaded PDF is merged into one master FAISS index. Queries always search across all documents automatically, with source attribution (filename + page) on every result.
+**Why a single master index?** I first implemented specific document query as well but this sounded more robust. Every uploaded PDF is merged into one FAISS index. Queries always search across all documents automatically, with source attribution (filename + page) on every result. No `index_id` tracking required from the client.
+
+**Why Groq?** After a bit of research, I decided to go with it as it has fastest inference available via API (~200–700ms), generous free tier (14,400 req/day), and `llama-3.3-70b-versatile` matches GPT-4o-mini quality for factual document Q&A.
 
 ---
 
@@ -124,43 +136,63 @@ curl -X POST http://localhost:8000/upload \
 ```
 ```json
 {
-  "filename": "E128-Skyvilla-Document.pdf",
-  "total_pages": 10,
-  "total_chunks": 147,
+  "filename": "MaxTowers-Document.pdf",
+  "total_pages": 36,
+  "total_chunks": 214,
   "message": "PDF indexed. Use /query/all to search across all documents."
 }
 ```
 
-### Upload multiple PDFs
-```bash
-curl -X POST http://localhost:8000/collection/create \
-  -F "files=@property1.pdf" \
-  -F "files=@property2.pdf"
-```
-
-### Query all documents
+### Query all documents (retrieval only)
 ```bash
 curl -X POST http://localhost:8000/query/all \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the carpet area of Sky Villa 1?", "top_k": 5}'
+  -d '{"question": "What is the LEED certification of Max Towers?", "top_k": 5}'
 ```
 ```json
 {
-  "question": "What is the carpet area of Sky Villa 1?",
+  "question": "What is the LEED certification of Max Towers?",
   "results": [
     {
-      "content": "Sky Villa 1 Level 1 Carpet area: 5789 sq. ft./ 537.81 sq. m...",
-      "filename": "E128-Skyvilla-Document.pdf",
-      "page_number": 3,
-      "score": 0.4071,
-      "rerank_score": 2.7723
+      "content": "Max Towers has achieved LEED Platinum Certified...",
+      "filename": "MaxTowers-Document.pdf",
+      "page_number": 13,
+      "score": 0.4812,
+      "rerank_score": 3.14
     }
   ],
-  "stage1_latency_ms": 9.1,
-  "stage2_latency_ms": 209.0,
-  "total_latency_ms": 218.1,
+  "stage1_latency_ms": 11.2,
+  "stage2_latency_ms": 196.4,
+  "total_latency_ms": 207.6,
   "cached": false
 }
+```
+
+### Get a natural language answer (retrieval + LLM)
+```bash
+curl -X POST http://localhost:8000/answer \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Which property has LEED Platinum certification?", "top_k": 5}'
+```
+```json
+{
+  "question": "Which property has LEED Platinum certification?",
+  "answer": "Max Towers has achieved LEED Platinum certification, as stated on page 13 of the Max Towers brochure. In contrast, Max House is LEED Gold certified. Therefore, Max Towers holds the higher certification of the two.",
+  "sources": [
+    { "filename": "MaxTowers-Document.pdf", "page_number": 13, "rerank_score": 3.14 },
+    { "filename": "MaxHouse-Document.pdf",  "page_number": 10, "rerank_score": 1.87 }
+  ],
+  "retrieval_ms": 207.6,
+  "generation_ms": 512.3,
+  "total_ms": 719.9,
+  "cached": false,
+  "model": "llama-3.3-70b-versatile"
+}
+```
+
+### Clear all documents
+```bash
+curl -X DELETE http://localhost:8000/documents/all
 ```
 
 ### Health check
@@ -180,146 +212,121 @@ curl http://localhost:8000/health
 
 ---
 
-## Success Metrics
+## Evaluation Results
 
-### Retrieval Quality
+Evaluated against the full 80-question test set across 4 real estate documents:
+- `222-rajpur-brochure.pdf` — 222 Rajpur, Dehradun
+- `max-towers-brochure.pdf` — Max Towers, Noida
+- `max-house-brochure.pdf` — Max House, Okhla
 
-Evaluated against 20 questions spanning two real estate PDFs:
-- `E128-Skyvilla-Document.pdf` — Estate 128 Sky Villas, Noida
-- `222-Rajpur-Document.pdf` — 222 Rajpur, Dehradun
-
-| Metric | Score | Target | Status |
-|---|---|---|---|
-| **Recall@1 (Top-1 Accuracy)** | **80.0% (16/20)** | ≥ 75% | ✓ |
-| **Recall@3 (Top-3 Accuracy)** | **100.0% (20/20)** | ≥ 90% | ✓ |
-| **Recall@5** | **100.0% (20/20)** | — | ✓ |
-| **MRR** | **0.90** | closer to 1.0 | ✓ |
-| **nDCG@5** | **0.9169** | closer to 1.0 | ✓ |
-| **Entity Coverage Score** | **0.525** | — | — |
-| **Paraphrase Robustness** | **80.0%** | — | — |
-| **Hallucination Rate** | **40.0%** | lower = better | — |
-| **False Positive Rate** | **40.0%** | lower = better | — |
-
-**Note on Hallucination / False Positive Rate:** This is measured at the retrieval level, no LLM generation exists in the current system. A "false positive" means the reranker returned a positive score for a question whose answer does not exist in the documents (e.g. "What is the price per sq ft?"). The 40% rate reflects that the reranker is not trained to abstain, it tries to rank the best available chunk, even if no truly relevant chunk exists. This is a known limitation of retrieval-only systems and would be addressed by adding a confidence threshold gate before returning results.
-
-#### Per-question breakdown
-
-| ID | Question | Rank | nDCG | Entity Cov |
-|---|---|:---:|:---:|:---:|
-| Q01 | Carpet area of Sky Villa 1 vs Sky Villa 2 | 1 | 1.00 | 0.50 |
-| Q02 | Does Estate 128 include pool and gym? | 1 | 1.00 | 0.50 |
-| Q03 | Separate entrances for guest rooms? | 1 | 1.00 | 1.00 |
-| Q04 | Double-height living room features | 1 | 1.00 | 1.00 |
-| Q05 | Width of wraparound balconies | 1 | 1.00 | 1.00 |
-| Q06 | RERA registration number | 1 | 1.00 | 1.00 |
-| Q07 | Private elevators in Estate 128 | 2 | 0.65 | 0.00 |
-| Q08 | Air conditioning system | 1 | 0.85 | 0.00 |
-| Q09 | Built-up and carpet area of Townhouse | 2 | 0.63 | 0.00 |
-| Q10 | Courtyard vs Forest Villas unit count | 1 | 1.00 | 0.50 |
-| Q11 | Plot size range for Townhouses | 1 | 1.00 | 0.50 |
-| Q12 | Forest Villas landscape connection | 1 | 0.98 | 0.50 |
-| Q13 | Sky court or atrium in townhouses | 2 | 0.65 | 0.00 |
-| Q14 | Service areas separated from private | 1 | 1.00 | 1.00 |
-| Q15 | Private elevators in Forest Villas | 1 | 1.00 | 1.00 |
-| Q16 | Unique botanical feature | 1 | 0.98 | 0.00 |
-| Q17 | Natural views at 222 Rajpur | 1 | 0.96 | 1.00 |
-| Q18 | UKRERA registration number | 1 | 1.00 | 0.00 |
-| Q19 | Seismic zone adherence | 2 | 0.63 | 0.00 |
-| Q20 | Car recognition security measures | 1 | 1.00 | 1.00 |
-
-**Note on Entity Coverage: Since the current system is retrieval-focused and does not generate synthetic responses, Entity Coverage is computed over top-K retrieved chunks.
----
-
-### Caching Strategy
-
-Query results are cached in Upstash Redis with a 1-hour TTL. The cache key is `result:{hash(question)}:{index_id}` — identical questions served from cache instantly.
-
-| Metric | Value |
-|---|---|
-| Cold query average | 220.7ms |
-| Cached query average | 41.0ms |
-| **Latency reduction** | **81.4%** |
-
-This directly exceeds the 50% reduction target. The 41ms warm latency includes HTTP round-trip to Upstash Redis plus response serialization.
-
-**Can we cache embeddings?** Yes, but the benefit during indexing is negligible — chunks are always new documents so cache hit rate would be near zero. At query time, embedding the question takes ~5ms which is already small relative to reranking (~209ms). Result caching at the full response level gives far better ROI.
-
----
-
-### Stage-wise Latency Breakdown
-
-Measured across 20 evaluation queries on CPU:
-
-| Stage | Avg Time | % of Total |
-|---|---|---|
-| Stage 1 — FAISS retrieval | 9.1ms | 4.2% |
-| Stage 2 — Cross-encoder rerank | 209.0ms | 95.8% |
-| **Total (cold)** | **218.2ms** | — |
-| **Total (cached)** | **~41ms** | — |
-
-| Percentile | Latency |
-|---|---|
-| Average | 218.2ms |
-| P95 | 269.1ms |
-| P99 | 279.8ms |
-
-All queries within the 2 second target. Generation time is not applicable — the current system returns raw retrieved chunks without LLM synthesis.
-
-**Is reranking worth the added latency?**
-Metrics without reranking:
+### Retrieval Quality (Sections A–E, 80 questions)
 
 | Metric | Score |
 |---|---|
-| **Recall@1 (Top-1 Accuracy)** | **70.0% (14/20)** |
-| **Recall@3 (Top-3 Accuracy)** | **85.0% (17/20)** |
-| **Recall@5** | **100.0% (20/20)** |
-| **MRR** | **0.8075** |
-| **nDCG@5** | **0.8483** |
-| **Entity Coverage Score** | **0.45** |
-| **Paraphrase Robustness** | **80.0%** |
-| **Hallucination Rate** | **40.0%** |
-| **False Positive Rate** | **40.0%** |
+| **Recall@1 (Top-1 Accuracy)** | **85.0%** |
+| **Recall@3 (Top-3 Accuracy)** | **91.2%** |
+| **Recall@5** | **93.8%** |
+| **MRR** | **0.8842** |
+| **nDCG@5** | **0.8883** | 
+| **Entity Coverage Score** | **0.8063** |
 
+### Robustness & Quality (Sections F–H)
 
-Yes. Top-3 accuracy of 100% with reranking versus ~85% without it justifies the ~209ms cost to some extent. The cross-encoder's ability to understand query intent versus chunk content is what separates relevant from irrelevant results for specific factual queries.
+| Metric | Score | Notes |
+|---|---|---|
+| **Paraphrase Robustness** | **86.7%** | 13/15 paraphrased questions matched the original result |
+| **Hallucination Rate** | **10.0%** | 1/10 adversarial questions answered incorrectly |
+| **False Positive Rate** | **10.0%** | 1/10 negative queries retrieved a false positive |
+| **Clarification Score** | **100.0%** | All 5 ambiguous queries correctly triggered clarification |
+
+The hallucination rate of 10% reflects one edge case where the model attempted an answer despite weak retrieval context. The clarification score of 100% means the system correctly identifies vague questions like "What is the total area?" and asks the user to specify which property rather than guessing.
+
+These scores are conservative by design, a subset of queries hit Groq's free tier rate limits mid-evaluation and were counted as failures rather than excluded. The numbers represent a floor, not a ceiling.
+
+### Caching Strategy
+
+Cache keys are `result:{hash(question)}:{index_id}` with a 1-hour TTL. LLM answers from `/answer` are cached separately so repeated natural language queries also return instantly.
+
+| Metric | Value |
+|---|---|
+| Cold query average | 229.9ms |
+| Cached query average | 35.5ms |
+| **Latency reduction** | **84.6%** |
+
+**Can we cache embeddings?** Benchmarked and decided no. During indexing, chunks are always new, cache hit rate is near zero. At query time, embedding takes ~5ms, which is negligible against reranking at ~198ms. Full response caching gives far better ROI.
+
+### Stage-wise Latency Breakdown
+
+| Stage | Avg Time | Share of Total |
+|---|---|---|
+| Stage 1 — FAISS retrieval | 12.9ms | 1.4% |
+| Stage 2 — Cross-encoder rerank | 197.6ms | 21.1% |
+| Stage 3 — Groq LLM generation | 727.1ms | 77.5% |
+| **End-to-end cold** | **939.8ms** | — |
+| **End-to-end cached** | **~35ms** | — |
+
+| Percentile | Retrieval only | Full pipeline (with LLM) |
+|---|---|---|
+| Average | 210.6ms | 939.8ms |
+| P95 | 257.5ms | 1942.7ms |
+
+The P95 spike to ~1.9s is from Groq free tier rate limiting under bulk load (30 RPM). On a paid tier this would flatten to ~600–800ms. Pure retrieval without LLM stays well under 300ms at P95.
+
+**Is reranking worth the added ~198ms?** Yes. Without it, Recall@1 drops to ~70% and Recall@3 to ~85%. The cross-encoder is what catches the difference between chunks that are semantically similar and chunks that actually answer the question.
 
 ---
 
-## System Behavior
+## LLM Integration
 
-### What happens as PDFs grow larger?
+The `/answer` endpoint chains two-stage retrieval with Groq LLM synthesis. Retrieved chunks become grounded context — the model is instructed to answer only from what the documents say and cite page numbers.
 
-| Component | Behavior |
-|---|---|
-| Indexing time | Scales linearly ~0.5s per page on CPU |
-| Query latency | Constant — FAISS search is O(n), fast up to ~500k chunks. Reranker scales with `CANDIDATE_K` (fixed at 20), not index size |
-| RAM usage | ~1.5KB per chunk (384-dim float32). 200-page PDF ≈ 3MB. Not a concern until thousands of PDFs |
+**System prompt principles:**
+- Answer only from retrieved context, never infer or hallucinate beyond it
+- For ambiguous queries (no property specified), ask: "Could you please clarify which property — 222 Rajpur, Max Towers, or Max House?"
+- For cross-property comparisons, synthesise across all relevant sources explicitly
+- If information is not in the documents, respond exactly: "This information is not available in the uploaded documents."
 
-Large PDFs are the primary stress test. Beyond indexing time, they introduce memory pressure since all chunk vectors must fit in RAM alongside the FAISS index. The current practical limit is 50 pages per document, beyond which a dedicated vector database with disk-backed storage is more appropriate.
+We can add more rules as per the industry needs.
 
-### What would break first in production?
+**Model — Groq `llama-3.3-70b-versatile`:** 30 RPM / 12k tokens per query on free tier, ~200–700ms typical generation latency, quality comparable to GPT-4o-mini for factual Q&A. 
+Free key from [console.groq.com](https://consolegroq.com).
 
-**In-memory Python dict for index storage** is the most critical limitation. All FAISS indexes live in `self._indexes: Dict[str, FAISS]` — a plain dict in the server process. Running `uvicorn --workers 4` would break query routing since each worker has its own isolated dict. Fix: migrate to Qdrant, Weaviate, or Pinecone for shared persistent vector storage.
 
-**Synchronous indexing blocks uploads.** Large PDFs hold the HTTP connection open for 10–30s. Fix: `BackgroundTasks` or a job queue (Celery/ARQ) — return a job ID immediately and poll for completion.
+---
 
-**FAISS flat index at scale.** `IndexFlatIP` does exact exhaustive search. Fine up to ~500k vectors, but beyond that switch to approximate search (`IndexIVFFlat` or `IndexHNSWFlat`) for sub-linear query time.
+## Running the Evaluation
 
-**No authentication.** Any client can upload arbitrary PDFs or flood the query endpoint. Fix: API key middleware, rate limiting, file content validation.
+Split across three files to work within Groq's free tier token limits. Each file covers one batch of questions and saves its own results JSON.
 
-### Where are the bottlenecks?
+```bash
+# No token limit — run everything at once
+python eval1.py && python eval2.py && python eval3.py && python merge_eval_results.py
 
-| Step | Avg Time | Notes |
-|---|---|---|
-| PDF extraction (PyMuPDF) | ~50ms/page | C-based, already optimal |
-| Embedding generation | ~2–5s total | Main indexing bottleneck. GPU = 10–20× faster |
-| FAISS index build | ~100ms | Negligible |
-| Stage 1: FAISS query | **9.1ms** | Constant regardless of index size |
-| Stage 2: CrossEncoder | **209ms** | Dominates query latency. Scales with `CANDIDATE_K` not index size |
+# With TPD limit — run one file per API key
+python eval1.py      # Sections A + B 
+# swap GROQ_API_KEY in .env, then:
+python eval2.py      # Sections C + D + E
+# swap again, then:
+python eval3.py      # Sections F + G + H
+python merge_eval_results.py   # combine into eval_final_results.json
 
-The cross-encoder dominates query latency at ~209ms.
+# Flags available on all eval files
+--upload      # upload all 3 PDFs first
+--retrieval   # skip LLM calls, retrieval metrics only
+--verbose     # print answers per question
+```
 
-The in-memory Python dict is the most critical production limitation — indexes are not shared across multiple workers, RAM grows unbounded, and there is no eviction policy.
+---
+
+## What Would Break First in Production
+
+**In-memory index storage** is the most critical limitation. All FAISS indexes live in a Python dict in a single process. Multiple workers break query routing. Fix: migrate to Qdrant, Weaviate, or Pinecone for shared persistent vector storage.
+
+**Synchronous indexing** blocks uploads for 10–30s on large PDFs. Fix: background job queue (Celery/ARQ) — return job ID immediately, poll for completion.
+
+**Groq free tier limits** cause latency spikes under bulk eval load. Fix: paid Groq tier, or adaptive retry with exponential backoff.
+
+**No authentication** — any client can upload PDFs or flood the query endpoint. Fix: API key middleware, rate limiting, file content validation.
 
 ---
 
@@ -329,75 +336,39 @@ All tunables in `app/config.py`:
 
 | Setting | Default | Notes |
 |---|---|---|
-| `EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Lightweight, fast, good general-purpose baseline |
+| `EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Lightweight, fast, strong general-purpose baseline |
 | `RERANKER_MODEL` | ms-marco-MiniLM-L-6-v2 | Trained on MS MARCO, strong factual Q&A precision |
-| `CHUNK_SIZE` | 400 chars | Tuned up from 200 — keeps related sentences together |
+| `GROQ_MODEL` | llama-3.3-70b-versatile | Production LLM for answer synthesis |
+| `CHUNK_SIZE` | 400 chars | Keeps related sentences together |
 | `CHUNK_OVERLAP` | 60 chars | Prevents boundary cuts between chunks |
-| `CANDIDATE_K` | 20 | Stage 1 fetch size — wider net for reranker |
+| `CANDIDATE_K` | 20 | Stage 1 fetch size — wider net for the reranker |
 | `SCORE_THRESHOLD` | 0.3 | Min cosine similarity to pass Stage 1 |
 | `DEFAULT_TOP_K` | 5 | Results returned per query |
 | `MAX_FILE_SIZE_MB` | 50 | Upload size limit |
-
----
-
-## Running the Evaluation
-
-```bash
-# Install eval dependencies
-pip install numpy requests
-
-# Upload PDFs and run full evaluation
-python eval.py --upload
-
-# Evaluate only (PDFs already indexed)
-python eval.py
-
-# Verbose — shows retrieved chunks per question
-python eval.py --verbose
-
-# Against a remote server
-API_BASE_URL=https://your-deployed-api.com python eval.py
-```
-
-Results are saved to `eval_results.json`. The script measures:
-- Recall@1, Recall@3, Recall@5, MRR, nDCG@5
-- Entity Coverage Score
-- Paraphrase Robustness Score
-- Hallucination Rate and False Positive Rate (negative query test)
-- Cold vs cached latency with % improvement
-- Stage-wise latency breakdown with P95 and P99
+| `CACHE_TTL_SECONDS` | 3600 | Redis TTL for cached results |
 
 ---
 
 ## Challenges Addressed
 
-**Retrieval precision — semantic mismatch**
-Pure bi-encoder retrieval returned semantically similar but factually wrong chunks. Solved by switching from L2 to cosine similarity (`IndexFlatIP`) and adding cross-encoder reranking, improving Top-1 from ~55% to 80%.
+**Retrieval precision.** Pure bi-encoder retrieval returned semantically similar but factually wrong chunks. Adding cross-encoder reranking fixed this, improving Top-1 from ~55% to 85%.
 
-**Chunk size tuning**
-Initial 200-char chunks fragmented specific facts like "Carpet area: 5789 sq. ft." across boundaries. Increasing to 400 chars with 60-char overlap kept related sentences together and improved accuracy significantly.
+**Chunk size tuning.** Initial 200-char chunks fragmented specific facts like "Carpet area: 5789 sq. ft." across boundaries. Increasing to 400 chars with 60-char overlap kept related sentences together.
 
-**Large PDF handling**
-Indexing time scales linearly with page count on CPU. Pages with less than 50 characters after cleaning (cover pages, image-only pages) are skipped to reduce noise. Practical limit is 50 pages per document for acceptable CPU indexing time.
+**Embedding cache regression.** An early implementation cached chunk embeddings via Upstash during indexing — this added 100+ HTTP round trips per document, making things slower. Removed entirely; only result-level caching at query time remains.
 
-**Duplicate chunks**
-Real estate brochures repeat layout elements across pages. Content-hash deduplication removes identical chunks before reranking.
+**LLM rate limits under evaluation.** Groq's free tier at 30 RPM caused progressive latency growth from ~400ms to 4s+ when hitting 80 questions back-to-back. Fixed by splitting evaluation into three files and adding a 2.6s sleep between non-cached LLM calls.
 
-**Score threshold calibration**
-Default L2 distance metrics returned irrelevant results with misleadingly high scores. Switching to inner product with normalized embeddings gave meaningful cosine similarity scores, and a 0.3 threshold filters genuinely irrelevant candidates before reranking.
+**Clarification for ambiguous queries.** The LLM initially returned multi-property answers for vague questions like "How many floors does it have?" Strengthened the system prompt to explicitly name all three properties and require clarification for context-free questions. Result: 100% clarification score.
 
 ---
 
-## Roadmap
+## Future Additions
 
-**LLM Response Generation**
-The current system returns raw retrieved chunks — the user interprets them manually. The natural next step is a `/answer` endpoint that passes the top-K reranked chunks as context to an LLM (Claude, GPT-4, or a local model via Ollama), returning a synthesised cited answer. This converts the system from a search engine into a true document Q&A assistant without changing the retrieval pipeline.
+**Async indexing** — background job queue (celery), immediate job ID response, eliminates long HTTP holds on large PDFs.
 
-**PostgreSQL Metadata Storage**
-Currently using Supabase PostgreSQL for document metadata via SQLAlchemy. A production deployment would extend this to store query logs, usage analytics, and per-user document access control.
+**Hybrid search** — combine FAISS semantic search with BM25 keyword search, then rerank merged candidates. Improves recall for exact terms like RERA numbers and specific measurements.
 
-**Async Indexing**
-Replace synchronous upload processing with a background job queue (Celery/ARQ) — return a job ID immediately, poll for completion. Eliminates the 10–30s HTTP connection hold on large PDFs.
+**Shared vector storage** — migrate from in-memory FAISS to Qdrant or Pinecone for multi-worker deployments and persistent storage.
 
-**Hybrid Search**
-Combine FAISS semantic search with BM25 keyword search, then rerank the merged candidates. Improves recall for exact terms like RERA numbers and specific sq ft values.
+**Per-user document access control** — extend Supabase registry to support multi-user deployments where each organisation queries only their own documents.

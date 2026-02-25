@@ -31,7 +31,7 @@ from app.config import DATABASE_URL, DB_ENABLED
 Base = declarative_base()
 
 
-# ── ORM Model ──────────────────────────────────────────────────────────────
+#  ORM Model 
 
 class DocumentRegistry(Base):
     __tablename__ = "document_registry"
@@ -45,7 +45,7 @@ class DocumentRegistry(Base):
     extra        = Column(Text, default="{}")   # JSON string for flexibility
 
 
-# ── Engine setup ───────────────────────────────────────────────────────────
+#  Engine setup 
 
 _engine  = None
 _Session = None
@@ -91,7 +91,7 @@ def get_session():
     return _Session() if _Session else None
 
 
-# ── Registry operations ────────────────────────────────────────────────────
+#  Registry operations 
 
 def save_document(index_id: str, filename: str, total_pages: int,
                   total_chunks: int, doc_type: str = "document",

@@ -135,7 +135,6 @@ def make_faiss_index(chunks: List[Document], embeddings: HuggingFaceEmbeddings) 
     texts     = [c.page_content for c in chunks]
     metadatas = [c.metadata for c in chunks]
 
-    # Batch embed all texts in one call — always fresh for new documents
     t0 = time.perf_counter()
     raw_vectors = embeddings.embed_documents(texts)
     vectors = np.array(raw_vectors, dtype=np.float32)
@@ -208,7 +207,6 @@ class RAGPipeline:
 
         self._load_master()
 
-    # ── Master index ──────────────────────────────────────────────────────
 
     def _load_master(self):
         master_path = INDEX_DIR / MASTER_INDEX_ID
@@ -275,7 +273,6 @@ class RAGPipeline:
     def has_master(self) -> bool:
         return MASTER_INDEX_ID in self._indexes
 
-    # ── Per-document indexing ─────────────────────────────────────────────
 
     def index_pdf(self, pdf_path: str) -> dict:
         pages, total_pages = load_pdf(pdf_path)
@@ -352,7 +349,6 @@ class RAGPipeline:
             "total_chunks":  len(all_chunks),
         }
 
-    # ── Index loading ─────────────────────────────────────────────────────
 
     def has_index(self, index_id: str) -> bool:
         # Only master index exists now
@@ -361,7 +357,7 @@ class RAGPipeline:
     def active_index_count(self) -> int:
         return len(self._indexes)
 
-    # ── Two-stage search ──────────────────────────────────────────────────
+    # Two-stage search
 
     def _run_search(self, vectorstore: FAISS, question: str, top_k: int) -> Tuple[List[SearchResult], float, float]:
         """
@@ -373,7 +369,7 @@ class RAGPipeline:
         top_k      = min(top_k, MAX_TOP_K)
         candidate_k = max(CANDIDATE_K, top_k)  # always fetch at least top_k
 
-        # ── Stage 1: FAISS bi-encoder search ──────────────────────────────
+        # Stage 1: FAISS bi-encoder search
         t0 = time.perf_counter()
         raw_results = vectorstore.similarity_search_with_score(question, k=candidate_k)
         stage1_ms = (time.perf_counter() - t0) * 1000
@@ -424,6 +420,4 @@ class RAGPipeline:
             raise RuntimeError("No documents uploaded yet.")
         return self._run_search(self._indexes[MASTER_INDEX_ID], question, top_k)
 
-
-# ── Module-level singleton ─────────────────────────────────────────────────
 rag_pipeline = RAGPipeline()

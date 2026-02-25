@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real Estate Doc Intelligence</title>
+  <title>Real Estate Intelligence</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 
@@ -300,6 +300,50 @@
       display: flex;
       gap: 12px;
     }
+
+    /* ── Answer card ────────────────────────────────── */
+    .answer-card {
+      border: 1px solid var(--accent);
+      border-radius: 3px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      background: var(--surface);
+    }
+
+    .answer-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    .answer-meta {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .answer-meta span { color: var(--text); }
+
+    .sources-list {
+      margin-top: 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .sources-list .source-item {
+      padding: 4px 0;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sources-list .source-item:last-child { border-bottom: none; }
 
     .empty-library {
       font-family: var(--mono);
@@ -645,7 +689,7 @@
     <!-- Header -->
     <header>
       <div>
-        <div class="logo">/real estate doc intelligence</div>
+        <div class="logo">/ real estate intelligence</div>
         <h1>Ask anything.<br><em>Find any property.</em></h1>
       </div>
       <div class="status-pill" id="statusPill">
@@ -702,8 +746,8 @@
       <div class="section-label">03 — Query</div>
 
       <div class="query-tabs">
-        <button class="tab-btn active" data-mode="all">Search All</button>
-        <!-- <button class="tab-btn" data-mode="specific">Specific Doc</button> -->
+        <button class="tab-btn active" data-mode="all">Search</button>
+        <button class="tab-btn" data-mode="answer">Answer</button>
       </div>
 
       <div class="specific-index-row" id="specificIndexRow">
@@ -733,12 +777,12 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    const API = window.location.origin;
+    const API = 'http://localhost:8000';
 
     // ── State ──────────────────────────────────────────
-    let pendingFiles = [];
-    let indexedDocs  = []; 
-    let queryMode    = 'all';
+    let pendingFiles = [];       // files staged for upload
+    let indexedDocs  = [];       // {index_id, filename, total_pages, total_chunks}
+    let queryMode    = 'all';    // 'all' | 'specific'
 
     // ── DOM refs ───────────────────────────────────────
     const dropZone      = document.getElementById('dropZone');
@@ -1006,7 +1050,11 @@
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         queryMode = btn.dataset.mode;
-        specificRow.classList.toggle('visible', queryMode === 'specific');
+        specificRow.classList.toggle('visible', false);
+        queryBtn.textContent = queryMode === 'answer' ? 'Ask →' : 'Search →';
+        queryInput.placeholder = queryMode === 'answer'
+          ? 'Ask a question and get a natural language answer...'
+          : 'Search across all uploaded documents...';
       });
     });
 
@@ -1024,32 +1072,28 @@
 
       try {
         let r, data;
+        const endpoint = queryMode === 'answer' ? `${API}/answer` : `${API}/query/all`;
 
-        if (queryMode === 'all') {
-          r = await fetch(`${API}/query/all`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: q, top_k: 5 }),
-          });
-        } else {
-          const idx = indexSelect.value;
-          if (!idx) { toast('Select a document first', 'error'); return; }
-          r = await fetch(`${API}/query`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: q, index_id: idx, top_k: 5 }),
-          });
-        }
+        r = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q, top_k: 5 }),
+        });
 
         if (!r.ok) throw new Error((await r.json()).detail);
         data = await r.json();
-        renderResults(data);
+
+        if (queryMode === 'answer') {
+          renderAnswer(data);
+        } else {
+          renderResults(data);
+        }
 
       } catch (err) {
         toast(`Query failed: ${err.message}`, 'error');
       } finally {
         queryBtn.disabled = false;
-        queryBtn.textContent = 'Search →';
+        queryBtn.textContent = queryMode === 'answer' ? 'Ask →' : 'Search →';
       }
     }
 
@@ -1096,6 +1140,73 @@
 
     function escapeHtml(str) {
       return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── Render answer (LLM mode) ────────────────────────
+    function renderAnswer(data) {
+      resultsSection.style.display = 'block';
+      resultsSection.innerHTML = '';
+
+      const card = document.createElement('div');
+      card.className = 'answer-card';
+
+      card.innerHTML = `
+        <div class="answer-text">${escapeHtml(data.answer)}</div>
+        <div class="answer-meta">
+          <div>retrieve <span>${data.retrieval_ms}ms</span></div>
+          <div>generate <span>${data.generation_ms}ms</span></div>
+          <div>total <span>${data.total_ms}ms</span></div>
+          <div>model <span>${data.model}</span></div>
+          ${data.cached ? '<div>served from <span>cache</span></div>' : ''}
+        </div>
+        ${data.sources && data.sources.length ? `
+        <div class="sources-list">
+          <div style="font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Sources</div>
+          ${data.sources.map(s => `
+            <div class="source-item">
+              ${escapeHtml(s.filename)} · page ${s.page_number} · rerank ${s.rerank_score.toFixed(2)}
+            </div>
+          `).join('')}
+        </div>` : ''}
+      `;
+      resultsSection.appendChild(card);
+
+      // Collapsible raw chunks
+      if (data.chunks && data.chunks.length) {
+        const toggle = document.createElement('div');
+        toggle.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;margin-bottom:8px;user-select:none;';
+        toggle.textContent = '▸ show retrieved chunks';
+        let shown = false;
+
+        const chunksEl = document.createElement('div');
+        chunksEl.style.display = 'none';
+
+        data.chunks.forEach((r, i) => {
+          const c = document.createElement('div');
+          c.className = 'result-card';
+          c.innerHTML = `
+            <div class="result-header">
+              <div class="result-source">
+                <span class="filename">${escapeHtml(r.filename)}</span>
+                <span>page ${r.page_number}</span>
+                <span>chunk #${r.chunk_index}</span>
+              </div>
+              <div class="score-badge ${i===0?'top':''}">rerank ${r.rerank_score}</div>
+            </div>
+            <div class="result-content">${escapeHtml(r.content)}</div>
+          `;
+          chunksEl.appendChild(c);
+        });
+
+        toggle.addEventListener('click', () => {
+          shown = !shown;
+          chunksEl.style.display = shown ? 'block' : 'none';
+          toggle.textContent = shown ? '▾ hide retrieved chunks' : '▸ show retrieved chunks';
+        });
+
+        resultsSection.appendChild(toggle);
+        resultsSection.appendChild(chunksEl);
+      }
     }
 
     // ── Init ───────────────────────────────────────────

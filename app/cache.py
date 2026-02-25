@@ -28,7 +28,7 @@ from app.config import (
     CACHE_ENABLED,
 )
 
-# ── Redis client (None if credentials missing) ─────────────────────────────
+#  Redis client (None if credentials missing) 
 _redis: Optional[Redis] = None
 
 
@@ -54,7 +54,7 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-# ── Result cache ───────────────────────────────────────────────────────────
+#  Result cache 
 
 def get_cached_results(question: str, index_id: str) -> Optional[dict]:
     """Return cached query results or None."""

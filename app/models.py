@@ -6,14 +6,14 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
-# ── Inbound ────────────────────────────────────────────────────────────────
+# Inbound
 
 class QueryAllRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=500, example="Which property has a swimming pool?")
     top_k: Optional[int] = Field(default=5, ge=1, le=10)
 
 
-# ── Outbound ───────────────────────────────────────────────────────────────
+# Outbound
 
 class ChunkResult(BaseModel):
     content: str
@@ -40,6 +40,24 @@ class UploadResponse(BaseModel):
     total_pages: int
     total_chunks: int
     message: str
+
+
+class SourceRef(BaseModel):
+    filename:    str
+    page_number: int
+    rerank_score: float = 0.0
+
+
+class AnswerResponse(BaseModel):
+    question:         str
+    answer:           str
+    sources:          List[SourceRef]
+    chunks:           List[ChunkResult]        # raw chunks for inspection
+    retrieval_ms:     float
+    generation_ms:    float
+    total_ms:         float
+    cached:           bool = False
+    model:            str  = "llama-3.3-70b-versatile"
 
 
 class HealthResponse(BaseModel):

@@ -1,0 +1,92 @@
+{
+  "eval_file": "eval3",
+  "sections": "F + G + H",
+  "summary": {
+    "paraphrase_robustness_pct": 86.7,
+    "false_positive_rate_pct": 10.0,
+    "hallucination_rate_pct": 10.0,
+    "clarification_score_pct": 100.0,
+    "caching": {
+      "cold_avg_ms": 0,
+      "warm_avg_ms": 62.4,
+      "reduction_pct": 0
+    }
+  },
+  "section_f": [
+    {
+      "id": "F01",
+      "paraphrase": "Which of the three developments is a housing project rather than an office building?",
+      "hit": false
+    },
+    {
+      "id": "F02",
+      "paraphrase": "Identify the project that is not meant for commercial office use.",
+      "hit": false
+    },
+    {
+      "id": "F03",
+      "paraphrase": "Among the three properties, which one is exclusively residential in nature?",
+      "hit": true
+    },
+    {
+      "id": "F04",
+      "paraphrase": "Between Max Towers and Max House, which holds the higher level of LEED certification?",
+      "hit": true
+    },
+    {
+      "id": "F05",
+      "paraphrase": "If sustainability certification level is the deciding factor, which property ranks highest?",
+      "hit": true
+    },
+    {
+      "id": "F06",
+      "paraphrase": "Which development has achieved Platinum-level green certification?",
+      "hit": true
+    },
+    {
+      "id": "F07",
+      "paraphrase": "Which office property can employees walk to from a metro station?",
+      "hit": true
+    },
+    {
+      "id": "F08",
+      "paraphrase": "Identify the development located within walking distance of a metro stop.",
+      "hit": true
+    },
+    {
+      "id": "F09",
+      "paraphrase": "Between the Noida and Okhla projects, which one offers closer metro access?",
+      "hit": true
+    },
+    {
+      "id": "F10",
+      "paraphrase": "Which project is larger in overall constructed area: Max Towers or Max House?",
+      "hit": true
+    },
+    {
+      "id": "F11",
+      "paraphrase": "Between the Delhi and Noida office developments, which spans more total square footage?",
+      "hit": true
+    },
+    {
+      "id": "F12",
+      "paraphrase": "Which property has the greater overall scale in terms of built-up space?",
+      "hit": true
+    },
+    {
+      "id": "F13",
+      "paraphrase": "Which property includes an indoor swimming facility?",
+      "hit": true
+    },
+    {
+      "id": "F14",
+      "paraphrase": "Identify the development that provides decompression or relaxation spaces.",
+      "hit": true
+    },
+    {
+      "id": "F15",
+      "paraphrase": "If employee wellness is a priority, which property explicitly supports it through facilities?",
+      "hit": true
+    }
+  ]
+}
