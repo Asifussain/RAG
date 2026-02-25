@@ -314,7 +314,10 @@ python merge_eval_results.py   # combine into eval_final_results.json
 --upload      # upload all 3 PDFs first
 --retrieval   # skip LLM calls, retrieval metrics only
 --verbose     # print answers per question
+
 ```
+---
+All evaluation result files: eval1_results.json, eval2_results.json, eval3_results.json, and the merged eval_final_results.json are committed to the repository so you can inspect the full per-question breakdown without running the eval yourself.
 
 ---
 
